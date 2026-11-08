@@ -229,7 +229,7 @@ const SVC_FTMS = uuid(0x1826), SVC_HR = uuid(0x180D), SVC_DIS = uuid(0x180A);
 const OP = { REQUEST_CONTROL:0x00, RESET:0x01, SET_SPEED:0x02, SET_INCLINE:0x03, SET_RESISTANCE:0x04, SET_POWER:0x05, START:0x07, STOP:0x08, SET_SIM:0x11, RESPONSE:0x80 };
 const OP_NAME = {0:'request control',1:'reset',2:'target speed',3:'target incline',4:'resistance',5:'ERG target',7:'start',8:'stop',0x11:'gradient'};
 const SVC_RSC = uuid(0x1814), SVC_CPS = uuid(0x1818);
-const shortId = id => { const m = /^0000([0-9a-f]{4})-0000-1000-8000-00805f9b34fb$/i.exec(id); return m ? m[1].toUpperCase() : id; };
+const shortId = id => { const m = /^0000([0-9a-f]{4})-0000-1000-8000-00805f9b34fb$/i.exec(id); return m ? m[1].toUpperCase() : String(id).toUpperCase(); };
 
 class Trainer {
   constructor(){ this.pending=null; this.lastSent={}; this.dataSeen=false; }
@@ -257,7 +257,15 @@ class Trainer {
       }
     }
     log('FTMS characteristics: ' + chars.map(c=>shortId(c.uuid)).join(' '));
-    const get = n => chars.find(c => c.uuid.toLowerCase() === uuid(n));
+    // match whether the browser reports full 128-bit IDs or short ones like "2ACD"
+    const norm = id => { id = String(id).toLowerCase().replace(/^0x/,''); return id.length<=8 ? id.padStart(4,'0').slice(-4) : (shortId(id).length===4 ? shortId(id).toLowerCase() : id); };
+    const get = n => chars.find(c => norm(c.uuid) === n.toString(16).padStart(4,'0'));
+    if (!get(0x2ACD) && !get(0x2AD2)){                   // last resort: ask for each directly
+      for (const n of [0x2ACD,0x2AD2,0x2AD9,0x2ADA,0x2AD4,0x2AD5,0x2AD8]){
+        if (!get(n)) try{ const c = await svc.getCharacteristic(uuid(n)); chars.push(c); }catch{}
+      }
+      log('After direct probe: ' + chars.map(c=>shortId(c.uuid)).join(' '));
+    }
     this.kind = get(0x2ACD) ? 'treadmill' : get(0x2AD2) ? 'bike' : null;
     if (!this.kind) throw new Error('Found the device but no bike or treadmill data on it');
     setSport(this.kind==='treadmill' ? 'run' : 'ride');
