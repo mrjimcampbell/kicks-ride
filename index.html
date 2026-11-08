@@ -67,6 +67,10 @@
   kbd{font-family:"JetBrains Mono",monospace;font-size:11px;border:1px solid var(--line);border-radius:4px;padding:0 5px}
   #panelTab{position:fixed;right:32px;top:126px;z-index:4;display:none}
   .hidden-el{display:none!important}
+  body.run .ride-only{display:none!important}
+  body:not(.run) .run-only{display:none!important}
+  #gSub{font-family:"JetBrains Mono",monospace;font-size:13px;color:var(--dim);margin-top:6px}
+  .log-actions{display:flex;gap:6px;margin-bottom:8px}.log-actions button{flex:1;padding:6px 8px;font-size:12px}
 </style>
 <script type="importmap">
 { "imports": {
@@ -79,7 +83,8 @@
 
 <div id="hud">
   <div class="metrics">
-    <div class="tile power"><div class="k">Power</div><div class="v" id="mPower">0<small>W</small></div></div>
+    <div class="tile power ride-only"><div class="k">Power</div><div class="v" id="mPower">0<small>W</small></div></div>
+    <div class="tile power run-only"><div class="k">Pace</div><div class="v" id="mPace">–:––<small>/km</small></div></div>
     <div class="tile"><div class="k">Cadence</div><div class="v" id="mCad">0<small>rpm</small></div></div>
     <div class="tile"><div class="k">Speed</div><div class="v" id="mSpeed">0.0<small>km/h</small></div><div class="k hidden-el" id="bikeSpd" style="margin-top:4px;text-transform:none;letter-spacing:.02em">KICKR says –</div></div>
     <div class="tile hidden-el" id="tHr"><div class="k">Heart</div><div class="v" id="mHr">–<small>bpm</small></div></div>
@@ -89,9 +94,9 @@
     <div class="tile"><div class="k">Time</div><div class="v" id="mTime">0:00</div></div>
     <div class="tile"><div class="k">Lap</div><div class="v" id="mLap">1</div></div>
   </div>
-  <div class="grade"><div class="k" id="gLabel">Gradient</div><div class="v" id="mGrade">0.0%</div></div>
+  <div class="grade"><div class="k" id="gLabel">Gradient</div><div class="v" id="mGrade">0.0%</div><div id="gSub"></div></div>
   <canvas id="profile"></canvas>
-  <div id="banner"><b>Connect your KICKR to start</b>or tick “simulate power” to try it without the bike</div>
+  <div id="banner"><b>Connect your bike or treadmill to start</b>or tick “simulate” to try it without equipment</div>
 </div>
 
 <button id="panelTab">Settings</button>
@@ -101,17 +106,26 @@
   <div class="sub">Test loop · <span id="courseLen"></span></div>
 
   <section>
-    <h2>Trainer</h2>
-    <button class="primary" id="connect">Connect KICKR</button>
+    <h2>Equipment</h2>
+    <button class="primary" id="connect">Connect bike or treadmill</button>
     <div id="status">Not connected</div>
-    <div class="row" style="margin-top:12px"><label><input type="checkbox" id="simToggle"> No bike — simulate power</label></div>
+    <button id="connectHr" style="width:100%;margin-top:10px">Connect heart rate / footpod</button>
+    <div id="hrStatus" class="keys" style="margin-top:6px"></div>
+    <div class="row" style="margin-top:12px"><label><input type="checkbox" id="simToggle"> No equipment — simulate</label></div>
     <div id="simCtl" class="hidden-el">
-      <div class="row"><label>Simulated power</label><output id="simPowerOut">180 W</output></div>
-      <input type="range" id="simPower" min="0" max="600" step="5" value="180">
+      <div class="seg" id="sportSeg"><button data-sport="ride" class="on">Ride</button><button data-sport="run">Run</button></div>
+      <div class="ride-only">
+        <div class="row"><label>Simulated power</label><output id="simPowerOut">180 W</output></div>
+        <input type="range" id="simPower" min="0" max="600" step="5" value="180">
+      </div>
+      <div class="run-only">
+        <div class="row"><label>Simulated belt speed</label><output id="simSpeedOut">10.0 km/h</output></div>
+        <input type="range" id="simSpeed" min="0" max="20" step="0.1" value="10">
+      </div>
     </div>
   </section>
 
-  <section>
+  <section class="ride-only">
     <h2>Mode</h2>
     <div class="seg" id="modeSeg">
       <button data-mode="sim" class="on">Course</button>
@@ -133,9 +147,32 @@
     </div>
   </section>
 
-  <section>
+  <section class="ride-only">
     <h2>Rider</h2>
     <div class="row"><label>Rider + bike weight</label><input type="number" id="mass" value="83" min="40" max="160"> kg</div>
+  </section>
+
+  <section class="run-only">
+    <h2>Incline</h2>
+    <div class="seg" id="runModeSeg">
+      <button data-rmode="course" class="on">Follow course</button>
+      <button data-rmode="fixed">Fixed</button>
+    </div>
+    <div id="ctl-rcourse" style="margin-top:12px">
+      <div class="row"><label>Course incline</label><output id="incScaleOut">100%</output></div>
+      <input type="range" id="incScale" min="0" max="100" step="5" value="100">
+      <div class="keys" style="margin-top:6px">Downhills flatten to the treadmill's lowest incline. Changes are sent at most every 4 s so the motor isn't constantly hunting.</div>
+    </div>
+    <div id="ctl-rfixed" class="hidden-el" style="margin-top:12px">
+      <div class="row"><label>Incline</label><output id="incFixedOut">1.0%</output></div>
+      <input type="range" id="incFixed" min="0" max="15" step="0.5" value="1">
+    </div>
+  </section>
+
+  <section class="run-only">
+    <h2>Belt speed</h2>
+    <div class="row"><label>Target</label><input type="number" id="tgtSpeed" value="10" min="1" max="20" step="0.1"> km/h <button id="setSpeed">Set</button></div>
+    <div class="keys">Only works once you've started the belt on the treadmill. The treadmill's own buttons and stop key always win.</div>
   </section>
 
   <section>
@@ -149,11 +186,12 @@
       <button id="reset" style="flex:1">Reset ride</button>
     </div>
     <button id="dl" style="width:100%;margin:2px 0 10px">Download ride data (CSV)</button>
-    <div class="keys"><kbd>V</kbd> view · <kbd>F</kbd> fullscreen · <kbd>H</kbd> hide panel · <kbd>↑</kbd><kbd>↓</kbd> sim power</div>
+    <div class="keys"><kbd>V</kbd> view · <kbd>F</kbd> fullscreen · <kbd>H</kbd> hide panel · <kbd>↑</kbd><kbd>↓</kbd> sim power / speed</div>
   </section>
 
   <section>
     <h2>Bluetooth log</h2>
+    <div class="log-actions"><button id="copyLog">Copy log</button><button id="explore">Bluetooth explorer</button></div>
     <div id="log"></div>
   </section>
 </aside>
@@ -166,7 +204,9 @@ import * as THREE from 'three';
    ========================================================= */
 const S = {
   connected:false, simulate:false, simPower:180,
-  power:0, cadence:0, hr:null, bikeSpeed:null,
+  sport:'ride', simSpeed:10,
+  power:0, cadence:0, hr:null, bikeSpeed:null, beltSpeed:null, beltIncline:null, footCad:null, hrStrap:false,
+  runMode:'course', incScale:1, incFixed:1,
   v:0, dist:0, elapsed:0,
   mode:'sim', difficulty:1, erg:150, manualGrade:0,
   mass:83, cda:0.32, crr:0.004,
@@ -174,9 +214,10 @@ const S = {
 };
 const $ = id => document.getElementById(id);
 const logEl = $('log');
+const errMsg = e => (e && (e.message || e.name)) || (typeof e==='string' ? e : (()=>{ try{ return JSON.stringify(e); }catch{ return String(e); } })()) || 'unknown error';
 function log(msg){
   const t = new Date().toTimeString().slice(0,8);
-  logEl.textContent = `${t}  ${msg}\n` + logEl.textContent.slice(0,6000);
+  logEl.textContent = `${t}  ${msg}\n` + logEl.textContent.slice(0,40000);
   console.log('[ride]', msg);
 }
 
@@ -185,8 +226,10 @@ function log(msg){
    ========================================================= */
 const uuid = n => `0000${n.toString(16).padStart(4,'0')}-0000-1000-8000-00805f9b34fb`;
 const SVC_FTMS = uuid(0x1826), SVC_HR = uuid(0x180D), SVC_DIS = uuid(0x180A);
-const OP = { REQUEST_CONTROL:0x00, RESET:0x01, SET_RESISTANCE:0x04, SET_POWER:0x05, START:0x07, STOP:0x08, SET_SIM:0x11, RESPONSE:0x80 };
-const OP_NAME = {0:'request control',1:'reset',4:'resistance',5:'ERG target',7:'start',8:'stop',0x11:'gradient'};
+const OP = { REQUEST_CONTROL:0x00, RESET:0x01, SET_SPEED:0x02, SET_INCLINE:0x03, SET_RESISTANCE:0x04, SET_POWER:0x05, START:0x07, STOP:0x08, SET_SIM:0x11, RESPONSE:0x80 };
+const OP_NAME = {0:'request control',1:'reset',2:'target speed',3:'target incline',4:'resistance',5:'ERG target',7:'start',8:'stop',0x11:'gradient'};
+const SVC_RSC = uuid(0x1814), SVC_CPS = uuid(0x1818);
+const shortId = id => { const m = /^0000([0-9a-f]{4})-0000-1000-8000-00805f9b34fb$/i.exec(id); return m ? m[1].toUpperCase() : id; };
 
 class Trainer {
   constructor(){ this.pending=null; this.lastSent={}; this.dataSeen=false; }
@@ -202,30 +245,57 @@ class Trainer {
   }
 
   async open(){
+    log('Connecting…');
     this.server = await this.device.gatt.connect();
     const svc = await this.server.getPrimaryService(SVC_FTMS);
-    this.cp  = await svc.getCharacteristic(uuid(0x2AD9));   // control point
-    this.ibd = await svc.getCharacteristic(uuid(0x2AD2));   // indoor bike data
-    this.cp.addEventListener('characteristicvaluechanged', e => this.onControl(e.target.value));
-    await this.cp.startNotifications();               // indications
-    this.ibd.addEventListener('characteristicvaluechanged', e => this.onData(e.target.value));
-    await this.ibd.startNotifications();
-    try{
-      const st = await svc.getCharacteristic(uuid(0x2ADA));
-      st.addEventListener('characteristicvaluechanged', e => this.onStatus(e.target.value));
-      await st.startNotifications();
-    }catch{}
-    try{
-      const pr = await svc.getCharacteristic(uuid(0x2AD8));
-      const d = await pr.readValue();
-      log(`Power range ${d.getInt16(0,true)}–${d.getInt16(2,true)} W`);
-    }catch{}
+    let chars = [];
+    try { chars = await svc.getCharacteristics(); }
+    catch(e){
+      log('Listing characteristics failed, probing one by one');
+      for (const n of [0x2ACC,0x2ACD,0x2AD2,0x2AD4,0x2AD5,0x2AD8,0x2AD9,0x2ADA]){
+        try{ chars.push(await svc.getCharacteristic(uuid(n))); }catch{}
+      }
+    }
+    log('FTMS characteristics: ' + chars.map(c=>shortId(c.uuid)).join(' '));
+    const get = n => chars.find(c => c.uuid.toLowerCase() === uuid(n));
+    this.kind = get(0x2ACD) ? 'treadmill' : get(0x2AD2) ? 'bike' : null;
+    if (!this.kind) throw new Error('Found the device but no bike or treadmill data on it');
+    setSport(this.kind==='treadmill' ? 'run' : 'ride');
+    log(this.kind==='treadmill' ? 'Treadmill detected' : 'Smart bike detected');
+
+    this.data = get(this.kind==='treadmill' ? 0x2ACD : 0x2AD2);
+    this.data.addEventListener('characteristicvaluechanged', e => {
+      try{ this.kind==='treadmill' ? this.onTreadmill(e.target.value) : this.onData(e.target.value); }
+      catch(err){ if (!this.parseWarned){ this.parseWarned=true; log('Data parse issue: '+errMsg(err)); } }
+    });
+    await this.data.startNotifications();
+
+    this.cp = get(0x2AD9) || null;
+    if (this.cp){
+      this.cp.addEventListener('characteristicvaluechanged', e => this.onControl(e.target.value));
+      try{ await this.cp.startNotifications(); }
+      catch(e){ log('Control point unavailable: '+errMsg(e)); this.cp = null; }
+    }
+    if (!this.cp) log('No control access, so display only');
+
+    const st = get(0x2ADA);
+    if (st){ try{ st.addEventListener('characteristicvaluechanged', e => this.onStatus(e.target.value)); await st.startNotifications(); }catch{} }
+
+    if (this.kind==='bike'){
+      try{ const d = await get(0x2AD8).readValue(); log(`Power range ${d.getInt16(0,true)}–${d.getInt16(2,true)} W`); }catch{}
+    } else {
+      try{ const d = await get(0x2AD4).readValue(); this.spdMin=d.getUint16(0,true)/100; this.spdMax=d.getUint16(2,true)/100; log(`Speed range ${this.spdMin}–${this.spdMax} km/h`); }catch{}
+      try{ const d = await get(0x2AD5).readValue(); this.incMin=d.getInt16(0,true)/10; this.incMax=d.getInt16(2,true)/10; this.incStep=Math.max(0.1, d.getUint16(4,true)/10); log(`Incline range ${this.incMin}–${this.incMax}% in ${this.incStep}% steps`); }catch{}
+    }
+
     this.lastSent = {};
-    await this.send([OP.REQUEST_CONTROL]);
-    await this.send([OP.START]);
+    if (this.cp){
+      const ok = await this.send([OP.REQUEST_CONTROL]);
+      log(ok ? 'Control granted' : 'Control request not accepted');
+      if (this.kind==='bike') await this.send([OP.START]);   // never auto-start a treadmill belt
+    }
     S.connected = true;
-    setStatus(`Connected · ${this.device.name||'trainer'}`, 'ok');
-    log('Control granted, streaming');
+    setStatus(`Connected · ${this.device.name||this.kind}`, 'ok');
   }
 
   async onDisconnect(){
@@ -233,13 +303,14 @@ class Trainer {
     setStatus('Disconnected — reconnecting…','bad'); log('Disconnected');
     for (let i=1;i<=5;i++){
       await new Promise(r=>setTimeout(r, 1500*i));
-      try{ await this.open(); return; }catch(e){ log(`Reconnect ${i} failed: ${e.message}`); }
+      try{ await this.open(); return; }catch(e){ log(`Reconnect ${i} failed: ${errMsg(e)}`); }
     }
     setStatus('Disconnected. Press Connect again.','bad');
   }
 
   /* writes are serialised: wait for the indication reply before the next */
   send(bytes){
+    if (!this.cp) return Promise.resolve(false);
     this.q = (this.q || Promise.resolve()).then(() => this._send(bytes));
     return this.q;
   }
@@ -249,7 +320,7 @@ class Trainer {
       const timer = setTimeout(() => { this.pending=null; log(`No reply to ${OP_NAME[op]}`); resolve(false); }, 2500);
       this.pending = { op, done:(ok)=>{ clearTimeout(timer); this.pending=null; resolve(ok); } };
       try{ await this.cp.writeValueWithResponse(new Uint8Array(bytes)); }
-      catch(e){ clearTimeout(timer); this.pending=null; log(`Write failed (${OP_NAME[op]}): ${e.message}`); resolve(false); }
+      catch(e){ clearTimeout(timer); this.pending=null; log(`Write failed (${OP_NAME[op]}): ${errMsg(e)}`); resolve(false); }
     });
   }
   get busy(){ return !!this.pending; }
@@ -286,9 +357,47 @@ class Trainer {
     if (!this.dataSeen){ this.dataSeen = true; log('Receiving bike data'); }
   }
 
-  /* called ~1×/s from the main loop */
-  tick(gradeForBike){
-    if (!S.connected || this.busy) return;
+  /* Treadmill Data 0x2ACD */
+  onTreadmill(dv){
+    let o = 0; const f = dv.getUint16(o,true); o += 2;
+    if (!(f & 0x0001)) { S.beltSpeed = dv.getUint16(o,true)/100; o += 2; }       // km/h
+    if (f & 0x0002) o += 2;                                                     // avg speed
+    if (f & 0x0004) o += 3;                                                     // total distance
+    if (f & 0x0008) { S.beltIncline = dv.getInt16(o,true)/10; o += 4; }         // incline + ramp angle
+    if (f & 0x0010) o += 4;                                                     // elevation gain
+    if (f & 0x0020) o += 1;                                                     // inst. pace
+    if (f & 0x0040) o += 1;                                                     // avg pace
+    if (f & 0x0080) o += 5;                                                     // energy
+    if (f & 0x0100) { const hr = dv.getUint8(o); o += 1; if (hr>0 && !S.hrStrap) S.hr = hr; }
+    if (!this.dataSeen){ this.dataSeen = true; log(`Receiving treadmill data (flags 0x${f.toString(16)})`); }
+  }
+
+  setSpeed(kmh){
+    if (!S.connected || this.kind!=='treadmill') { log('Connect the treadmill first'); return; }
+    if (!this.cp) { log('This treadmill isn’t accepting control'); return; }
+    if (!(S.beltSpeed > 0.5)) { log('Start the belt on the treadmill first'); return; }
+    if (this.spdMin!=null) kmh = Math.min(this.spdMax, Math.max(this.spdMin, kmh));
+    const v = Math.round(kmh*100);
+    log(`Setting belt speed ${kmh.toFixed(1)} km/h`);
+    this.send([OP.SET_SPEED, v & 0xff, (v>>8) & 0xff]);
+  }
+
+  /* called ~1×/s from the main loop with the road gradient under you */
+  tick(roadGrade){
+    if (!S.connected || this.busy || !this.cp) return;
+    const now = performance.now();
+    if (this.kind === 'treadmill'){
+      const step = this.incStep || 0.5;
+      let want = S.runMode==='fixed' ? S.incFixed : roadGrade*S.incScale;
+      want = Math.min(this.incMax ?? 15, Math.max(this.incMin ?? 0, want));
+      want = Math.round(want/step)*step;
+      if (this.lastSent.inc === undefined || (Math.abs(want - this.lastSent.inc) >= Math.max(step,0.5) && now - this.lastSent.t > 4000)){
+        this.lastSent = { inc:want, t:now };
+        const v = Math.round(want*10);
+        this.send([OP.SET_INCLINE, v & 0xff, (v>>8) & 0xff]);
+      }
+      return;
+    }
     if (S.mode === 'erg'){
       if (this.lastSent.erg !== S.erg){
         this.lastSent = { erg:S.erg };
@@ -296,8 +405,7 @@ class Trainer {
       }
       return;
     }
-    const g = Math.round(gradeForBike*10)/10;   // 0.1% steps
-    const now = performance.now();
+    const g = Math.round((S.mode==='manual' ? S.manualGrade : roadGrade*S.difficulty)*10)/10;
     if (this.lastSent.grade !== g || now - (this.lastSent.t||0) > 8000){
       this.lastSent = { grade:g, t:now };
       const dv = new DataView(new ArrayBuffer(7));
@@ -320,13 +428,83 @@ $('connect').onclick = async () => {
     return;
   }
   try{
-    setStatus('Choose your KICKR in the popup…');
+    setStatus('Choose your bike or treadmill in the popup…');
     await trainer.connect();
     $('simToggle').checked = false; setSimulate(false);
   }catch(e){
-    setStatus(e.name==='NotFoundError' ? 'No device chosen' : `Couldn’t connect: ${e.message}`, 'bad');
-    log(`Connect error: ${e.message}`);
+    setStatus(e && e.name==='NotFoundError' ? 'No device chosen' : `Couldn’t connect: ${errMsg(e)}`, 'bad');
+    log(`Connect error: ${errMsg(e)}`);
   }
+};
+
+/* ---------- Heart rate strap / running footpod ---------- */
+class HRM {
+  async connect(){
+    this.device = await navigator.bluetooth.requestDevice({
+      filters:[{services:[SVC_HR]},{services:[SVC_RSC]}], optionalServices:[SVC_HR, SVC_RSC, SVC_DIS]
+    });
+    this.device.addEventListener('gattserverdisconnected', async () => {
+      S.hrStrap=false; S.footCad=null; $('hrStatus').textContent='Disconnected, retrying…';
+      for (let i=1;i<=5;i++){ await new Promise(r=>setTimeout(r,1500*i)); try{ await this.open(); return; }catch{} }
+      $('hrStatus').textContent='Disconnected';
+    });
+    await this.open();
+  }
+  async open(){
+    const srv = await this.device.gatt.connect(); const got=[];
+    try{
+      const c = await (await srv.getPrimaryService(SVC_HR)).getCharacteristic(uuid(0x2A37));
+      c.addEventListener('characteristicvaluechanged', e => { const d=e.target.value, f=d.getUint8(0); const hr = (f&1)?d.getUint16(1,true):d.getUint8(1); if (hr>0){ S.hr=hr; S.hrStrap=true; } });
+      await c.startNotifications(); got.push('heart rate');
+    }catch{}
+    try{
+      const c = await (await srv.getPrimaryService(SVC_RSC)).getCharacteristic(uuid(0x2A53));
+      c.addEventListener('characteristicvaluechanged', e => { const d=e.target.value; let cad=d.getUint8(3); const spd=d.getUint16(1,true)/256*3.6; if (cad && cad<120 && spd>5) cad*=2; S.footCad = cad; });
+      await c.startNotifications(); got.push('running cadence');
+    }catch{}
+    if (!got.length) throw new Error('No heart rate or cadence found on that device');
+    $('hrStatus').textContent = `${this.device.name||'Sensor'} · ${got.join(' + ')}`;
+    log(`Sensor connected: ${got.join(', ')}`);
+  }
+}
+const hrm = new HRM();
+$('connectHr').onclick = async () => {
+  if (!navigator.bluetooth) return;
+  try{ await hrm.connect(); }catch(e){ if (!(e && e.name==='NotFoundError')) { $('hrStatus').textContent = `Couldn’t connect: ${errMsg(e)}`; log(`Sensor error: ${errMsg(e)}`); } }
+};
+
+/* ---------- Bluetooth explorer: lists everything a device offers and logs changes ---------- */
+const EXPLORE = [0x180A,0x180D,0x180F,0x1814,0x1816,0x1818,0x1826].map(uuid)
+  .concat(Array.from({length:16}, (_,i)=>`a026ee${i.toString(16).padStart(2,'0')}-0a7d-4ab3-97fa-f1500f9feb8b`));
+const NOISY = new Set(['2A63','2AD2','2ACD','2A37','2A53','2A5B']);
+$('explore').onclick = async () => {
+  if (!navigator.bluetooth) return;
+  try{
+    const dev = await navigator.bluetooth.requestDevice({ acceptAllDevices:true, optionalServices:EXPLORE });
+    log(`Explorer: ${dev.name||'device'}`);
+    const srv = dev.gatt.connected ? dev.gatt : await dev.gatt.connect();
+    const svcs = await srv.getPrimaryServices();
+    for (const sv of svcs){
+      log(`Service ${shortId(sv.uuid)}`);
+      let cs=[]; try{ cs = await sv.getCharacteristics(); }catch{}
+      for (const c of cs){
+        const pr = c.properties, flags = ['read','write','writeWithoutResponse','notify','indicate'].filter(k=>pr[k]).join(',');
+        let val=''; if (pr.read){ try{ const d=await c.readValue(); val=' = '+hex(d); }catch{} }
+        log(`  ${shortId(c.uuid)} [${flags}]${val}`);
+        if ((pr.notify||pr.indicate) && !NOISY.has(shortId(c.uuid))){
+          let last='';
+          c.addEventListener('characteristicvaluechanged', e => { const h=hex(e.target.value); if (h!==last){ last=h; log(`  ↳ ${shortId(c.uuid)}: ${h}`); } });
+          try{ await c.startNotifications(); }catch{}
+        }
+      }
+    }
+    log('Explorer: listening. Press buttons and watch for ↳ lines');
+  }catch(e){ if (!(e && e.name==='NotFoundError')) log(`Explorer error: ${errMsg(e)}`); }
+};
+function hex(dv){ return Array.from(new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)).map(b=>b.toString(16).padStart(2,'0')).join(' '); }
+$('copyLog').onclick = async () => {
+  try{ await navigator.clipboard.writeText(logEl.textContent); log('Log copied'); }
+  catch{ const r=document.createRange(); r.selectNodeContents(logEl); const sel=getSelection(); sel.removeAllRanges(); sel.addRange(r); log('Log selected. Use Copy'); }
 };
 
 /* =========================================================
@@ -556,6 +734,23 @@ const wheels = [];
 }
 scene.add(bike);
 
+// Placeholder runner (forward = +z)
+const runner = new THREE.Group();
+{
+  const kit = new THREE.MeshStandardMaterial({ color:'#2d3440', roughness:0.8 });
+  const top = new THREE.MeshStandardMaterial({ color:'#d6633a', roughness:0.6 });
+  const skin = new THREE.MeshStandardMaterial({ color:'#c99a7c', roughness:0.8 });
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.16,0.42,4,10), top); torso.position.y=1.28; torso.rotation.x=0.12; runner.add(torso);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.11,16,12), skin); head.position.set(0,1.68,0.06); runner.add(head);
+  const limb = (len, r, mat, y, x) => { const g=new THREE.Group(); g.position.set(x,y,0); const m=new THREE.Mesh(new THREE.CapsuleGeometry(r,len,4,8),mat); m.position.y=-len/2-r; g.add(m); runner.add(g); return g; };
+  runner.userData.legs = [limb(0.72,0.07,kit,0.98,-0.09), limb(0.72,0.07,kit,0.98,0.09)];
+  runner.userData.arms = [limb(0.42,0.045,skin,1.5,-0.21), limb(0.42,0.045,skin,1.5,0.21)];
+  runner.traverse(o=>{ if(o.isMesh) o.castShadow=true; });
+  runner.visible = false;
+}
+scene.add(runner);
+let stride = 0;
+
 /* =========================================================
    PHYSICS — power + slope → speed
    ========================================================= */
@@ -602,8 +797,25 @@ function drawProfile(){
    ========================================================= */
 function setSimulate(on){
   S.simulate = on; $('simCtl').classList.toggle('hidden-el', !on);
-  if (on && !S.connected) log('Simulating power');
+  if (on && !S.connected) log(S.sport==='run' ? 'Simulating belt speed' : 'Simulating power');
 }
+function setSport(sp){
+  S.sport = sp; document.body.classList.toggle('run', sp==='run');
+  document.querySelector('#panel h1').textContent = sp==='run' ? 'Run' : 'Ride';
+  [...$('sportSeg').children].forEach(b=>b.classList.toggle('on', b.dataset.sport===sp));
+  trainer.lastSent = {}; S.v = 0;
+}
+$('sportSeg').onclick = e => { if (e.target.dataset.sport && !S.connected) setSport(e.target.dataset.sport); };
+$('simSpeed').oninput = e => { S.simSpeed=+e.target.value; $('simSpeedOut').textContent=`${S.simSpeed.toFixed(1)} km/h`; };
+$('incScale').oninput = e => { S.incScale=e.target.value/100; $('incScaleOut').textContent=`${e.target.value}%`; };
+$('incFixed').oninput = e => { S.incFixed=+e.target.value; $('incFixedOut').textContent=`${S.incFixed.toFixed(1)}%`; };
+$('runModeSeg').onclick = e => {
+  const m = e.target.dataset.rmode; if (!m) return; S.runMode = m;
+  [...$('runModeSeg').children].forEach(b=>b.classList.toggle('on', b.dataset.rmode===m));
+  $('ctl-rcourse').classList.toggle('hidden-el', m!=='course'); $('ctl-rfixed').classList.toggle('hidden-el', m!=='fixed');
+  trainer.lastSent = {};
+};
+$('setSpeed').onclick = () => trainer.setSpeed(+$('tgtSpeed').value);
 $('simToggle').onchange = e => setSimulate(e.target.checked);
 $('simPower').oninput = e => { S.simPower=+e.target.value; $('simPowerOut').textContent=`${S.simPower} W`; };
 $('diff').oninput = e => { S.difficulty=e.target.value/100; $('diffOut').textContent=`${e.target.value}%`; };
@@ -636,16 +848,16 @@ $('reset').onclick = () => { S.dist=0; S.v=0; S.elapsed=0; samples.length=0; };
 const samples = [];
 function logSample(power, grade){
   if (!(S.connected || S.simulate)) return;
-  samples.push([new Date().toISOString(), S.elapsed.toFixed(1), Math.round(power), Math.round(S.cadence),
+  samples.push([new Date().toISOString(), S.sport, S.elapsed.toFixed(1), Math.round(power), Math.round(S.cadence),
     (S.v*3.6).toFixed(2), S.bikeSpeed!=null ? S.bikeSpeed.toFixed(2) : '', grade.toFixed(2),
-    S.mode==='manual'?S.manualGrade:(S.mode==='erg'?'':(grade*S.difficulty).toFixed(2)), S.mode, S.mass, (S.dist).toFixed(1), S.hr??'']);
+    S.mode==='manual'?S.manualGrade:(S.mode==='erg'?'':(grade*S.difficulty).toFixed(2)), S.sport==='run'?S.runMode:S.mode, S.mass, (S.dist).toFixed(1), S.hr??'', S.beltSpeed??'', S.beltIncline??'']);
 }
 $('dl').onclick = () => {
   if (!samples.length){ log('Nothing recorded yet'); return; }
-  const head = 'time,elapsed_s,power_w,cadence_rpm,app_speed_kmh,kickr_speed_kmh,road_grade_pct,grade_sent_pct,mode,mass_kg,distance_m,hr_bpm';
+  const head = 'time,sport,elapsed_s,power_w,cadence,app_speed_kmh,kickr_speed_kmh,road_grade_pct,grade_sent_pct,mode,mass_kg,distance_m,hr_bpm,belt_speed_kmh,belt_incline_pct';
   const blob = new Blob([head+'\n'+samples.map(r=>r.join(',')).join('\n')], {type:'text/csv'});
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-  a.download = `ride-${new Date().toISOString().slice(0,16).replace(/[:T]/g,'-')}.csv`; a.click();
+  a.download = `${S.sport}-${new Date().toISOString().slice(0,16).replace(/[:T]/g,'-')}.csv`; a.click();
   log(`Saved ${samples.length} s of data`);
 };
 const togglePanel = () => { const hidden=$('panel').classList.toggle('hidden'); $('panelTab').style.display = hidden?'block':'none'; };
@@ -660,8 +872,13 @@ addEventListener('keydown', e => {
   else if (e.key==='ArrowUp' || e.key==='ArrowDown'){
     e.preventDefault();
     if (!S.simulate){ $('simToggle').checked=true; setSimulate(true); }
-    S.simPower = Math.max(0, Math.min(600, S.simPower + (e.key==='ArrowUp'?10:-10)));
-    $('simPower').value=S.simPower; $('simPowerOut').textContent=`${S.simPower} W`;
+    if (S.sport==='run'){
+      S.simSpeed = Math.max(0, Math.min(20, +(S.simSpeed + (e.key==='ArrowUp'?0.5:-0.5)).toFixed(1)));
+      $('simSpeed').value=S.simSpeed; $('simSpeedOut').textContent=`${S.simSpeed.toFixed(1)} km/h`;
+    } else {
+      S.simPower = Math.max(0, Math.min(600, S.simPower + (e.key==='ArrowUp'?10:-10)));
+      $('simPower').value=S.simPower; $('simPowerOut').textContent=`${S.simPower} W`;
+    }
   }
 });
 // keep the screen awake while riding
@@ -689,23 +906,32 @@ const fmtTime = s => { s=Math.floor(s); const h=Math.floor(s/3600), m=Math.floor
 function frame(){
   const dt = Math.min(clock.getDelta(), 0.1);
 
-  // power source
-  let power = 0;
-  if (S.connected) power = S.power;
-  else if (S.simulate){
-    power = S.simPower;
-    simCad += ((power>0 ? 82 + power*0.03 : 0) - simCad)*dt*2;
-    S.cadence = simCad;
-  } else { S.power = 0; S.cadence = 0; }
-
   const grade = gradeAt(S.dist);
-  stepPhysics(dt, power, grade);
+  let power = 0;
+  if (S.sport==='run'){
+    // the belt is the truth: you move at whatever speed the treadmill is running
+    const kmh = S.connected ? (S.beltSpeed||0) : S.simulate ? S.simSpeed : 0;
+    S.v += (kmh/3.6 - S.v)*Math.min(1, dt*3);
+    if (S.v < 0.02 && kmh===0) S.v = 0;
+    S.dist += S.v*dt;
+    if (S.footCad) S.cadence = S.footCad;
+    else if (S.simulate && !S.connected){ simCad += ((kmh>0 ? 150 + kmh*2.2 : 0) - simCad)*dt*2; S.cadence = simCad; }
+    else S.cadence = 0;
+  } else {
+    if (S.connected) power = S.power;
+    else if (S.simulate){
+      power = S.simPower;
+      simCad += ((power>0 ? 82 + power*0.03 : 0) - simCad)*dt*2;
+      S.cadence = simCad;
+    } else { S.power = 0; S.cadence = 0; }
+    stepPhysics(dt, power, grade);
+  }
   if (S.v > 0.3 || power > 0) S.elapsed += dt;
 
   // send to trainer ~1 Hz
   tickAcc += dt;
   if (tickAcc > 1){ tickAcc = 0; logSample(power, grade);
-    trainer.tick(S.mode==='manual' ? S.manualGrade : grade*S.difficulty);
+    trainer.tick(grade);
   }
 
   // position on course
@@ -721,13 +947,25 @@ function frame(){
   crank += (S.cadence/60)*Math.PI*2*dt;
   bike.userData.legs.forEach((l,i)=>{ l.position.y = 0.75 + Math.sin(crank + i*Math.PI)*0.06; });
 
+  runner.position.copy(base); runner.lookAt(tmpB.copy(base).add(tmpA.set(t.x,0,t.z)));
+  side.set(-t.z,0,t.x).normalize();
+  { const spm = S.cadence || (S.v>0.5 ? 165 : 0);
+    stride += dt*(spm/60)*Math.PI;   // one full cycle = two steps
+    const sw = Math.min(1, S.v/2.5);
+    runner.userData.legs.forEach((g,i)=>{ g.rotation.x = Math.sin(stride + i*Math.PI)*0.7*sw; });
+    runner.userData.arms.forEach((g,i)=>{ g.rotation.x = -Math.sin(stride + i*Math.PI)*0.6*sw; });
+    runner.position.y += Math.abs(Math.sin(stride))*0.05*sw; }
+
   bob += dt*(S.cadence/60)*Math.PI*2;
+  const isRun = S.sport==='run';
   if (S.view==='fp'){
-    bike.visible = false;
+    bike.visible = false; runner.visible = false;
+    if (isRun){ camera.position.copy(base).add(tmpB.set(0, 1.7 + Math.abs(Math.sin(stride))*0.03*Math.min(1,S.v/2.5), 0)); ahead.y += 1.4; }
+    else {
     camera.position.copy(base).add(tmpB.set(0, 1.55 + Math.sin(bob*2)*0.006*Math.min(1,S.v/4), 0));
-    ahead.y += 1.25;
+    ahead.y += 1.25; }
   } else {
-    bike.visible = true;
+    bike.visible = !isRun; runner.visible = isRun;
     const back = curve.getPointAt(wrap(S.dist-6.5)/L).addScaledVector(side, LANE);
     camera.position.copy(back).add(tmpB.set(0,2.5,0));
     ahead.copy(base).add(tmpB.set(0,1.1,0)).addScaledVector(t, 4);
@@ -742,19 +980,32 @@ function frame(){
   uiAcc += dt;
   if (uiAcc > 0.15){ uiAcc = 0;
     $('mPower').innerHTML = `${Math.round(power)}<small>W</small>`;
-    $('mCad').innerHTML   = `${Math.round(S.cadence)}<small>rpm</small>`;
+    const cu = S.sport==='run' ? 'spm' : 'rpm';
+    $('mCad').innerHTML   = S.cadence>0 || S.sport!=='run' ? `${Math.round(S.cadence)}<small>${cu}</small>` : `–<small>${cu}</small>`;
+    if (S.sport==='run'){
+      const secPerKm = S.v>0.4 ? Math.round(1000/S.v) : null;
+      $('mPace').innerHTML = (secPerKm ? `${Math.floor(secPerKm/60)}:${String(secPerKm%60).padStart(2,'0')}` : '–:––') + '<small>/km</small>';
+    }
     $('mSpeed').innerHTML = `${(S.v*3.6).toFixed(1)}<small>km/h</small>`;
     $('mDist').innerHTML  = `${(S.dist/1000).toFixed(2)}<small>km</small>`;
     $('mTime').textContent = fmtTime(S.elapsed);
     $('mLap').textContent  = Math.floor(S.dist/L)+1;
-    if (S.mode==='erg'){ $('gLabel').textContent='ERG target'; $('mGrade').textContent=`${S.erg} W`; }
+    $('gSub').textContent = '';
+    if (S.sport==='run'){
+      const want = S.runMode==='fixed' ? S.incFixed : Math.max(0, grade*S.incScale);
+      $('gLabel').textContent = S.runMode==='fixed' ? 'Fixed incline' : 'Incline';
+      $('mGrade').textContent = `${want.toFixed(1)}%`;
+      $('mGrade').style.color = want>6?'#ff8a6b':want>3?'#ffc27a':'';
+      if (S.beltIncline!=null && S.connected) $('gSub').textContent = `treadmill at ${S.beltIncline.toFixed(1)}%`;
+    }
+    else if (S.mode==='erg'){ $('gLabel').textContent='ERG target'; $('mGrade').textContent=`${S.erg} W`; }
     else {
       const shown = S.mode==='manual' ? S.manualGrade : grade;
       $('gLabel').textContent = S.mode==='manual' ? 'Fixed grade' : 'Gradient';
       $('mGrade').textContent = `${shown>=0?'':'−'}${Math.abs(shown).toFixed(1)}%`;
       $('mGrade').style.color = shown>6?'#ff8a6b':shown>3?'#ffc27a':'';
     }
-    if (S.bikeSpeed!=null && S.connected){ $('bikeSpd').classList.remove('hidden-el'); $('bikeSpd').textContent = `KICKR says ${S.bikeSpeed.toFixed(1)}`; }
+    if (S.bikeSpeed!=null && S.connected && S.sport==='ride'){ $('bikeSpd').classList.remove('hidden-el'); $('bikeSpd').textContent = `KICKR says ${S.bikeSpeed.toFixed(1)}`; }
     if (S.hr){ $('tHr').classList.remove('hidden-el'); $('mHr').innerHTML = `${S.hr}<small>bpm</small>`; }
     $('banner').style.opacity = (S.connected || S.simulate) ? 0 : 1;
   }
@@ -763,7 +1014,7 @@ function frame(){
   requestAnimationFrame(frame);
 }
 frame();
-window.__ride = S; // handy for debugging in the console
+window.__ride = S; window.__trainer = trainer; // handy for debugging in the console
 </script>
 </body>
 </html>
