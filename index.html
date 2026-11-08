@@ -97,7 +97,7 @@
 <button id="panelTab">Settings</button>
 
 <aside id="panel">
-  <h1>Ride</h1>
+  <div style="display:flex;align-items:center;justify-content:space-between"><h1>Ride</h1><button id="hidePanel">Hide</button></div>
   <div class="sub">Test loop · <span id="courseLen"></span></div>
 
   <section>
@@ -617,11 +617,23 @@ $('modeSeg').onclick = e => {
 };
 function setView(v){ S.view=v; [...$('viewSeg').children].forEach(b=>b.classList.toggle('on', b.dataset.view===v)); }
 $('viewSeg').onclick = e => e.target.dataset.view && setView(e.target.dataset.view);
-const toggleFS = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+function toggleFS(){
+  const d=document, el=d.documentElement;
+  const isFS = d.fullscreenElement || d.webkitFullscreenElement;
+  try{
+    if (isFS) (d.exitFullscreen||d.webkitExitFullscreen).call(d);
+    else {
+      const req = el.requestFullscreen || el.webkitRequestFullscreen;
+      if (!req) { log('Fullscreen isn’t supported in this browser'); return; }
+      const r = req.call(el); if (r && r.catch) r.catch(e=>log('Fullscreen blocked: '+e.message));
+    }
+  }catch(e){ log('Fullscreen blocked: '+e.message); }
+}
 $('fs').onclick = toggleFS;
 $('reset').onclick = () => { S.dist=0; S.v=0; S.elapsed=0; };
 const togglePanel = () => { const hidden=$('panel').classList.toggle('hidden'); $('panelTab').style.display = hidden?'block':'none'; };
 $('panelTab').onclick = togglePanel;
+$('hidePanel').onclick = togglePanel;
 addEventListener('keydown', e => {
   if (e.target.tagName==='INPUT' && e.target.type==='number') return;
   const k = e.key.toLowerCase();
