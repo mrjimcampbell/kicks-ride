@@ -476,10 +476,11 @@ class Trainer {
   setSpeed(kmh){
     if (!S.connected || this.kind!=='treadmill') { log('Connect the treadmill first'); return; }
     if (!this.cp) { log('This treadmill isn’t accepting control'); return; }
-    if (!(S.beltSpeed > 0.5)) { log('Start the belt on the treadmill first'); return; }
+    if (!(S.beltSpeed > 0.3)) { log('Start the belt on the treadmill first'); return; }
     if (this.spdMin!=null) kmh = Math.min(this.spdMax, Math.max(this.spdMin, kmh));
     const v = Math.round(kmh*100);
     log(`Setting belt speed ${kmh.toFixed(1)} km/h`);
+    this.speedCheck = { kmh, t:performance.now(), tries:(this.speedCheck && this.speedCheck.kmh===kmh) ? this.speedCheck.tries+1 : 1 };
     this.send([OP.SET_SPEED, v & 0xff, (v>>8) & 0xff]);
   }
 
@@ -1324,7 +1325,7 @@ function enterStep(i){
   const st = W.steps[i];
   if (S.sport==='run'){
     S.wkIncline = st.inc; trainer.lastSent = {};
-    if (S.connected){ if (S.beltSpeed > 0.5) trainer.setSpeed(st.kmh); else { W.pendingSpeed = st.kmh; log('Start the belt and the workout will set the speed'); } }
+    if (S.connected){ if (S.beltSpeed > 0.3) trainer.setSpeed(st.kmh); else { W.pendingSpeed = st.kmh; log('Start the belt and the workout will set the speed'); } }
     else if (S.simulate){ S.simSpeed = +st.kmh.toFixed(1); $('simSpeed').value = S.simSpeed; $('simSpeedOut').textContent = `${S.simSpeed.toFixed(1)} km/h`; }
   } else {
     setRideMode('erg'); S.erg = st.watts; $('erg').value = st.watts; $('ergOut').textContent = `${st.watts} W`;
@@ -1359,7 +1360,13 @@ function updateWorkout(dt){
     const stopped = !(S.beltSpeed > 0.3);
     if (stopped && !W.autoPaused){ W.autoPaused = true; W.pendingSpeed = st.kmh; log('Belt stopped, so the workout is paused'); }
     if (!stopped && W.autoPaused) W.autoPaused = false;
-    if (W.pendingSpeed && S.beltSpeed > 0.5 && !trainer.busy){ trainer.setSpeed(W.pendingSpeed); W.pendingSpeed = null; }
+    if (W.pendingSpeed && S.beltSpeed > 0.3 && !trainer.busy){ trainer.setSpeed(W.pendingSpeed); W.pendingSpeed = null; }
+    // if the treadmill ignored the change (some do while still ramping up), send it again
+    const sc = trainer.speedCheck;
+    if (sc && !stopped && performance.now() - sc.t > 5000){
+      if (Math.abs((S.beltSpeed||0) - sc.kmh) > 0.6 && sc.tries < 3 && !trainer.busy){ log('Speed didn’t take, resending'); trainer.setSpeed(sc.kmh); }
+      else trainer.speedCheck = null;
+    }
   }
   if (W.paused || W.autoPaused) return;
   W.time += dt;
