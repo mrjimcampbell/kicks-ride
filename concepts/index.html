@@ -1,0 +1,1726 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ride — KICKR test course</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#f4f1ec; --dim:rgba(244,241,236,.62); --faint:rgba(244,241,236,.18);
+    --glass:rgba(18,20,24,.46); --line:rgba(255,255,255,.10);
+    --accent:#ffb36b; --good:#8fd6a4; --warn:#ff7a6b;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:#0d0f12;color:var(--ink);
+    font-family:"Inter Tight",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  canvas#gl{position:fixed;inset:0;width:100%;height:100%;display:block}
+  .mono{font-family:"JetBrains Mono",ui-monospace,monospace}
+
+  /* HUD */
+  #hud{position:fixed;inset:0;pointer-events:none}
+  .metrics{position:absolute;top:28px;left:32px;display:flex;gap:10px}
+  .tile{background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border:1px solid var(--line);border-radius:14px;padding:12px 18px 10px;min-width:118px}
+  .tile .k{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .tile .v{font-family:"JetBrains Mono",monospace;font-weight:600;font-size:40px;line-height:1.1;font-variant-numeric:tabular-nums}
+  .tile .v small{font-size:14px;font-weight:400;color:var(--dim);margin-left:4px}
+  .tile.power{min-width:150px}
+  .tile.power .v{font-size:56px}
+  .right{position:absolute;top:28px;right:32px;display:flex;gap:10px}
+  .grade{position:absolute;right:32px;bottom:118px;text-align:right}
+  .grade .v{font-family:"JetBrains Mono",monospace;font-size:64px;font-weight:600;line-height:1}
+  .grade .k{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-bottom:6px}
+  #profile{position:absolute;left:32px;right:32px;bottom:26px;height:76px;width:calc(100% - 64px);
+    border-radius:12px;background:var(--glass);backdrop-filter:blur(14px);border:1px solid var(--line)}
+  #banner{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;
+    font-size:15px;color:var(--dim);letter-spacing:.04em;transition:opacity .6s}
+  #banner b{display:block;font-size:30px;color:var(--ink);font-weight:500;letter-spacing:0;margin-bottom:8px}
+
+  /* Panel */
+  #panel{position:fixed;top:0;right:0;bottom:0;width:320px;padding:22px 20px;overflow:auto;
+    background:rgba(14,16,19,.86);backdrop-filter:blur(18px);border-left:1px solid var(--line);
+    transform:translateX(0);transition:transform .35s ease;font-size:13px;z-index:5}
+  #panel.hidden{transform:translateX(100%)}
+  #panel h1{font-size:18px;font-weight:600;margin:0 0 2px}
+  #panel .sub{color:var(--dim);margin-bottom:18px}
+  #panel section{border-top:1px solid var(--line);padding:14px 0}
+  #panel h2{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0 0 10px;font-weight:500}
+  button{font:inherit;color:var(--ink);background:rgba(255,255,255,.07);border:1px solid var(--line);
+    border-radius:9px;padding:8px 12px;cursor:pointer}
+  button:hover{background:rgba(255,255,255,.13)}
+  button.primary{background:var(--accent);color:#1b1206;border-color:transparent;font-weight:600;width:100%;padding:11px}
+  button.primary:hover{filter:brightness(1.07)}
+  .seg{display:flex;gap:4px;background:rgba(255,255,255,.05);padding:3px;border-radius:10px}
+  .seg button{flex:1;border:0;background:transparent;padding:7px 4px}
+  .seg button.on{background:rgba(255,255,255,.16)}
+  .row{display:flex;align-items:center;gap:10px;margin:8px 0}
+  .row label{flex:1;color:var(--dim)}
+  .row output,.row .val{font-family:"JetBrains Mono",monospace;min-width:52px;text-align:right}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  input[type=number]{width:72px;font:inherit;color:var(--ink);background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:7px;padding:5px 7px}
+  #status{margin-top:10px;color:var(--dim)} #status.ok{color:var(--good)} #status.bad{color:var(--warn)}
+  #log{font-family:"JetBrains Mono",monospace;font-size:10.5px;line-height:1.5;color:var(--dim);
+    max-height:170px;overflow:auto;white-space:pre-wrap}
+  .keys{color:var(--dim);line-height:1.7}
+  kbd{font-family:"JetBrains Mono",monospace;font-size:11px;border:1px solid var(--line);border-radius:4px;padding:0 5px}
+  #panelTab{position:fixed;right:32px;top:126px;z-index:4;display:none}
+  .hidden-el{display:none!important}
+  body.run .ride-only{display:none!important}
+  body:not(.run) .run-only{display:none!important}
+  #gSub{font-family:"JetBrains Mono",monospace;font-size:13px;color:var(--dim);margin-top:6px}
+  #wkHud{position:absolute;left:32px;bottom:118px;min-width:270px;pointer-events:auto}
+  #wkHud .v{font-size:46px}
+  #wkHud .tgt{font-family:"JetBrains Mono",monospace;font-size:15px;margin-top:2px}
+  #wkHud .nxt{font-size:12px;color:var(--dim);margin-top:6px}
+  #wkHud .btns{display:flex;gap:6px;margin-top:10px}#wkHud .btns button{flex:1;padding:6px;font-size:12px}
+  #wkCount{position:absolute;top:22%;left:50%;transform:translateX(-50%);text-align:center;pointer-events:none;
+    font-family:"JetBrains Mono",monospace;font-weight:600;font-size:120px;line-height:1;text-shadow:0 4px 30px rgba(0,0,0,.4);opacity:0;transition:opacity .2s}
+  #wkCount small{display:block;font-family:"Inter Tight",sans-serif;font-size:20px;font-weight:500;margin-top:8px}
+  .modal{position:fixed;inset:0;z-index:20;background:rgba(5,6,8,.55);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:16px}
+  .sheet{width:min(720px,100%);max-height:92vh;overflow:auto;background:#15181c;border:1px solid var(--line);border-radius:18px;padding:20px 22px;font-size:13px}
+  .sheet header{display:flex;align-items:center;gap:10px;margin-bottom:16px}.sheet header .seg{flex:1}
+  .sheet h3{font-size:20px;font-weight:600;margin:0 0 4px}
+  .wk-item{display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}
+  .wk-item .nm{font-size:15px;font-weight:600}.wk-item .ds{color:var(--dim)}
+  .wk-item svg{grid-column:1/3;width:100%;height:34px}
+  .wk-item .acts{display:flex;gap:6px}
+  .form-grid{display:grid;grid-template-columns:auto 1fr;gap:8px 12px;align-items:center;margin:12px 0}
+  .form-grid label{color:var(--dim)}
+  .form-grid .f{display:flex;gap:6px;align-items:center;flex-wrap:wrap;color:var(--dim)}
+  input.txt{width:66px;font:inherit;color:var(--ink);background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:7px;padding:5px 7px}
+  input.wide{width:100%}
+  #wkPreview{width:100%;height:56px;margin:6px 0 4px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:14px 0}
+  .stats div{background:rgba(255,255,255,.05);border-radius:10px;padding:10px 12px}
+  .stats b{display:block;font-family:"JetBrains Mono",monospace;font-size:22px;font-weight:600}
+  .stats span{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+  #flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .35s;z-index:6}
+  #shots{display:flex;gap:8px;overflow-x:auto;padding:4px 0 8px}
+  #shots img{height:84px;border-radius:8px;border:2px solid transparent;cursor:pointer;opacity:.45}
+  #shots img.sel{border-color:var(--accent);opacity:1}
+  .log-actions{display:flex;gap:6px;margin-bottom:8px}.log-actions button{flex:1;padding:6px 8px;font-size:12px}
+  body.clean #hud, body.clean #panel, body.clean #panelTab{display:none!important}
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="flash"></div>
+
+<div id="hud">
+  <div class="metrics">
+    <div class="tile power ride-only"><div class="k">Power</div><div class="v" id="mPower">0<small>W</small></div></div>
+    <div class="tile power run-only"><div class="k">Pace</div><div class="v" id="mPace">–:––<small>/km</small></div></div>
+    <div class="tile"><div class="k">Cadence</div><div class="v" id="mCad">0<small>rpm</small></div></div>
+    <div class="tile"><div class="k">Speed</div><div class="v" id="mSpeed">0.0<small>km/h</small></div><div class="k hidden-el" id="bikeSpd" style="margin-top:4px;text-transform:none;letter-spacing:.02em">KICKR says –</div></div>
+    <div class="tile hidden-el" id="tHr"><div class="k">Heart</div><div class="v" id="mHr">–<small>bpm</small></div></div>
+  </div>
+  <div class="right">
+    <div class="tile"><div class="k">Distance</div><div class="v" id="mDist">0.00<small>km</small></div></div>
+    <div class="tile"><div class="k">Time</div><div class="v" id="mTime">0:00</div></div>
+    <div class="tile"><div class="k">Lap</div><div class="v" id="mLap">1</div></div>
+  </div>
+  <div class="grade"><div class="k" id="gLabel">Gradient</div><div class="v" id="mGrade">0.0%</div><div id="gSub"></div></div>
+  <canvas id="profile"></canvas>
+  <div id="wkHud" class="tile hidden-el">
+    <div class="k" id="wkStep">Rep 1 of 8</div>
+    <div class="v" id="wkLeft">0:00</div>
+    <div class="tgt" id="wkTarget"></div>
+    <div class="nxt" id="wkNext"></div>
+    <div class="btns"><button id="wkPause">Pause</button><button id="wkSkip">Skip</button><button id="wkEnd">End</button></div>
+  </div>
+  <div id="wkCount"></div>
+  <div id="banner"><b>Connect your bike or treadmill to start</b>or tick “simulate” to try it without equipment</div>
+</div>
+
+<button id="panelTab">Settings</button>
+
+<aside id="panel">
+  <div style="display:flex;align-items:center;justify-content:space-between"><h1>Ride</h1><button id="hidePanel">Hide</button></div>
+  <div class="sub">Test loop · <span id="courseLen"></span></div>
+
+  <section>
+    <h2>Equipment</h2>
+    <button class="primary" id="connect">Connect bike or treadmill</button>
+    <div id="status">Not connected</div>
+    <button id="connectHr" style="width:100%;margin-top:10px">Connect heart rate / footpod</button>
+    <div id="hrStatus" class="keys" style="margin-top:6px"></div>
+    <div class="row" style="margin-top:12px"><label><input type="checkbox" id="simToggle"> No equipment — simulate</label></div>
+    <div id="simCtl" class="hidden-el">
+      <div class="seg" id="sportSeg"><button data-sport="ride" class="on">Ride</button><button data-sport="run">Run</button></div>
+      <div class="ride-only">
+        <div class="row"><label>Simulated power</label><output id="simPowerOut">180 W</output></div>
+        <input type="range" id="simPower" min="0" max="600" step="5" value="180">
+      </div>
+      <div class="run-only">
+        <div class="row"><label>Simulated belt speed</label><output id="simSpeedOut">10.0 km/h</output></div>
+        <input type="range" id="simSpeed" min="0" max="20" step="0.1" value="10">
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Session</h2>
+    <div class="row"><button id="openWk" style="flex:1">Workouts…</button><button id="finish" style="flex:1">Finish &amp; save</button></div>
+    <button id="stravaBtn" style="width:100%;margin-top:4px">Connect Strava</button>
+    <div class="row" id="relayRow" style="margin-top:8px"><label>Relay</label><input class="txt wide" id="relayUrl" placeholder="https://…workers.dev" style="flex:3"></div>
+  </section>
+
+  <section class="ride-only">
+    <h2>Mode</h2>
+    <div class="seg" id="modeSeg">
+      <button data-mode="sim" class="on">Course</button>
+      <button data-mode="erg">ERG</button>
+      <button data-mode="manual">Fixed grade</button>
+    </div>
+    <div id="ctl-sim" style="margin-top:12px">
+      <div class="row"><label>Trainer difficulty</label><output id="diffOut">100%</output></div>
+      <input type="range" id="diff" min="0" max="100" step="5" value="100">
+      <div class="keys" style="margin-top:6px">How much of the road's gradient the bike feels. Zwift's default is 50%.</div>
+    </div>
+    <div id="ctl-erg" class="hidden-el" style="margin-top:12px">
+      <div class="row"><label>Target power</label><output id="ergOut">150 W</output></div>
+      <input type="range" id="erg" min="50" max="450" step="5" value="150">
+    </div>
+    <div id="ctl-manual" class="hidden-el" style="margin-top:12px">
+      <div class="row"><label>Grade sent to bike</label><output id="manOut">0.0%</output></div>
+      <input type="range" id="man" min="-5" max="15" step="0.5" value="0">
+    </div>
+  </section>
+
+  <section class="ride-only">
+    <h2>Rider</h2>
+    <div class="row"><label>Your weight</label><input type="number" id="mass" value="69" min="30" max="150" step="0.5"> kg</div>
+    <div class="keys">Plus 8 kg for a virtual road bike. Total weight sets how fast you climb and accelerate.</div>
+  </section>
+
+  <section class="run-only">
+    <h2>Incline</h2>
+    <div class="seg" id="runModeSeg">
+      <button data-rmode="course" class="on">Follow course</button>
+      <button data-rmode="fixed">Fixed</button>
+    </div>
+    <div id="ctl-rcourse" style="margin-top:12px">
+      <div class="row"><label>Course incline</label><output id="incScaleOut">100%</output></div>
+      <input type="range" id="incScale" min="0" max="100" step="5" value="100">
+      <div class="keys" style="margin-top:6px">Downhills flatten to the treadmill's lowest incline. Changes are sent at most every 4 s so the motor isn't constantly hunting.</div>
+    </div>
+    <div id="ctl-rfixed" class="hidden-el" style="margin-top:12px">
+      <div class="row"><label>Incline</label><output id="incFixedOut">1.0%</output></div>
+      <input type="range" id="incFixed" min="0" max="15" step="0.5" value="1">
+    </div>
+  </section>
+
+  <section class="run-only">
+    <h2>Belt speed</h2>
+    <div class="row"><label>Target</label><input type="number" id="tgtSpeed" value="10" min="1" max="20" step="0.1"> km/h <button id="setSpeed">Set</button></div>
+    <div class="keys">Only works once you've started the belt on the treadmill. The treadmill's own buttons and stop key always win.</div>
+  </section>
+
+  <section>
+    <h2>View</h2>
+    <div class="seg" id="viewSeg">
+      <button data-view="fp" class="on">First person</button>
+      <button data-view="chase">Chase</button>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button id="fs" style="flex:1">Fullscreen</button>
+      <button id="reset" style="flex:1">Reset ride</button>
+    </div>
+    <div class="row"><button id="snap" style="flex:1">Snapshot</button><label style="flex:1;color:var(--dim)"><input type="checkbox" id="autoSnap" checked> Auto snapshots</label></div>
+    <button id="dl" style="width:100%;margin:2px 0 10px">Download ride data (CSV)</button>
+    <div class="keys"><kbd>V</kbd> view · <kbd>F</kbd> fullscreen · <kbd>H</kbd> hide panel · <kbd>P</kbd> snapshot · <kbd>↑</kbd><kbd>↓</kbd> sim power / speed</div>
+  </section>
+
+  <section>
+    <h2>Bluetooth log</h2>
+    <div class="log-actions"><button id="copyLog">Copy log</button><button id="explore">Bluetooth explorer</button></div>
+    <div id="log"></div>
+  </section>
+</aside>
+
+<div id="wkModal" class="modal hidden-el"><div class="sheet">
+  <header>
+    <div class="seg" id="wkTabs"><button data-tab="lib" class="on">Library</button><button data-tab="build">Build</button></div>
+    <button id="wkClose">Close</button>
+  </header>
+  <div id="tab-lib"><div id="wkList"></div></div>
+  <div id="tab-build" class="hidden-el">
+    <div class="run-only">
+      <div class="seg" id="runTypeSeg"><button data-rt="int" class="on">Intervals</button><button data-rt="steady">Steady / easy</button></div>
+      <div class="form-grid" id="runIntForm">
+        <label>Warm-up</label><div class="f"><input class="txt" id="b_wu" type="number" min="0" value="10"> min at <input class="txt" id="b_wuPace" value="6:30"> /km</div>
+        <label>Reps</label><div class="f"><input class="txt" id="b_reps" type="number" min="1" value="8"> × <input class="txt" id="b_repDist" type="number" min="50" step="50" value="400"> m at <input class="txt" id="b_repPace" value="4:15"> /km</div>
+        <label>Recovery</label><div class="f"><input class="txt" id="b_rec" type="number" min="0" step="5" value="60"> s at <input class="txt" id="b_recSpeed" type="number" min="0" step="0.5" value="5"> km/h</div>
+        <label>Incline</label><div class="f">reps <input class="txt" id="b_repInc" type="number" step="0.5" value="1"> % · recoveries <input class="txt" id="b_recInc" type="number" step="0.5" value="1"> %</div>
+        <label>Cool-down</label><div class="f"><input class="txt" id="b_cd" type="number" min="0" value="5"> min at <input class="txt" id="b_cdPace" value="6:30"> /km</div>
+      </div>
+      <div class="form-grid hidden-el" id="runSteadyForm">
+        <label>Duration</label><div class="f"><input class="txt" id="b_sDur" type="number" min="1" value="30"> min</div>
+        <label>Pace</label><div class="f"><input class="txt" id="b_sPace" value="6:30"> /km (the app holds the belt here)</div>
+        <label>Incline</label><div class="f"><input class="txt" id="b_sInc" type="number" step="0.5" value="1"> %</div>
+      </div>
+    </div>
+    <div class="ride-only">
+      <div class="form-grid">
+        <label>FTP</label><div class="f"><input class="txt" id="b_ftp" type="number" min="80" value="200"> W, so targets scale as you get fitter</div>
+        <label>Warm-up</label><div class="f"><input class="txt" id="r_wu" type="number" min="0" value="10"> min at <input class="txt" id="r_wuPct" type="number" value="55"> %</div>
+        <label>Reps</label><div class="f"><input class="txt" id="r_reps" type="number" min="1" value="5"> × <input class="txt" id="r_repMin" type="number" min="0.25" step="0.25" value="3"> min at <input class="txt" id="r_repPct" type="number" value="110"> %</div>
+        <label>Recovery</label><div class="f"><input class="txt" id="r_rec" type="number" min="0" step="0.25" value="3"> min at <input class="txt" id="r_recPct" type="number" value="50"> %</div>
+        <label>Cool-down</label><div class="f"><input class="txt" id="r_cd" type="number" min="0" value="5"> min at <input class="txt" id="r_cdPct" type="number" value="50"> %</div>
+      </div>
+    </div>
+    <svg id="wkPreview" preserveAspectRatio="none"></svg>
+    <div id="wkSummary" class="keys"></div>
+    <div class="row" style="margin-top:12px"><input class="txt wide" id="wkName" placeholder="Name"><button id="wkSave">Save</button><button class="primary" id="wkStartNew" style="width:auto;padding:9px 16px">Start</button></div>
+  </div>
+</div></div>
+
+<div id="doneModal" class="modal hidden-el"><div class="sheet">
+  <h3 id="doneTitle">Session</h3>
+  <div class="keys" id="doneSub"></div>
+  <div class="stats" id="doneStats"></div>
+  <button class="primary hidden-el" id="uploadStrava" style="margin-bottom:8px">Upload to Strava</button>
+  <div id="upStatus" class="keys" style="margin-bottom:10px"></div>
+  <div class="row" style="flex-wrap:wrap">
+    <button class="primary" id="saveTcx" style="flex:2;width:auto">Save file for Strava</button>
+    <button id="openStrava" style="flex:1">Open Strava upload</button>
+  </div>
+  <div id="shotsWrap" class="hidden-el" style="margin:14px 0 4px">
+    <div class="row" style="margin:0 0 6px"><label>Snapshots: tap to pick</label><button id="saveShots">Save selected</button></div>
+    <div id="shots"></div>
+    <div class="keys">Strava doesn't let apps attach photos to uploads, so save these and add them in the Strava app.</div>
+  </div>
+  <div class="keys" style="margin:8px 0 14px">Saves a .tcx with your laps, heart rate, cadence, speed and power. Drag it onto Strava's upload page, then set the type to Virtual Ride or Treadmill run if you like.</div>
+  <div class="row"><button id="keepGoing" style="flex:1">Keep going</button><button id="newSession" style="flex:1">New session (reset)</button></div>
+</div></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+const MOODS = {
+  highlands: { exposure:1.0, fog:['#a9b0b4',70,1900], sky:['#6f7d8c','#c9cbc8','#f3dcb8'], sunDir:[0.75,0.16,-0.64], hemi:['#d5dbe0','#5a5040',1.25], sun:['#ffe2bf',1.6], treeL:0.8, bloom:0.18,
+    single:true, mountains:true, moor:true, loch:true, pines:true, rocks:true },
+  dawn:  { exposure:1.1, fog:['#cfc6bb',60,1100], sky:['#8fa3b8','#e8d8c5','#ffcf96'], sunDir:[0.6,0.10,-0.79], hemi:['#e4eaf0','#6b6a48',1.2], sun:['#ffd2a0',2.4], treeL:1, bloom:0.25 },
+  coast: { exposure:1.05, fog:['#d7a98a',260,3200], sky:['#36557e','#f2b27c','#ff9a5a'], sunDir:[-0.85,0.07,0.52], hemi:['#f0d8c0','#4c4a3a',1.0], sun:['#ffb07a',2.8], treeL:0.9, bloom:0.35, sea:true },
+  night: { exposure:1.25, fog:['#0b0f16',15,420], sky:['#04060b','#141b29','#000000'], sunDir:[0.3,0.6,-0.7], hemi:['#5a6a8a','#0a0a08',0.12], sun:['#8aa0c8',0.25], treeL:0.35, bloom:0.9, lamps:true, wet:true },
+};
+const MOOD = MOODS[new URLSearchParams(location.search).get('mood') || 'dawn'];
+
+/* =========================================================
+   STATE
+   ========================================================= */
+const S = {
+  connected:false, simulate:false, simPower:180,
+  sport:'ride', simSpeed:10,
+  power:0, cadence:0, hr:null, bikeSpeed:null, beltSpeed:null, beltIncline:null, footCad:null, hrStrap:false,
+  runMode:'course', incScale:1, incFixed:1, wkIncline:null, frozen:false, runAlt:0,
+  v:0, dist:0, elapsed:0,
+  mode:'sim', difficulty:1, erg:150, manualGrade:0,
+  mass:77, cda:0.32, crr:0.004,
+  view:'fp',
+};
+const $ = id => document.getElementById(id);
+const logEl = $('log');
+const errMsg = e => (e && (e.message || e.name)) || (typeof e==='string' ? e : (()=>{ try{ return JSON.stringify(e); }catch{ return String(e); } })()) || 'unknown error';
+function log(msg){
+  const t = new Date().toTimeString().slice(0,8);
+  logEl.textContent = `${t}  ${msg}\n` + logEl.textContent.slice(0,40000);
+  console.log('[ride]', msg);
+}
+
+/* =========================================================
+   TRAINER — Bluetooth FTMS (Fitness Machine Service)
+   ========================================================= */
+const uuid = n => `0000${n.toString(16).padStart(4,'0')}-0000-1000-8000-00805f9b34fb`;
+const SVC_FTMS = uuid(0x1826), SVC_HR = uuid(0x180D), SVC_DIS = uuid(0x180A);
+const OP = { REQUEST_CONTROL:0x00, RESET:0x01, SET_SPEED:0x02, SET_INCLINE:0x03, SET_RESISTANCE:0x04, SET_POWER:0x05, START:0x07, STOP:0x08, SET_SIM:0x11, RESPONSE:0x80 };
+const OP_NAME = {0:'request control',1:'reset',2:'target speed',3:'target incline',4:'resistance',5:'ERG target',7:'start',8:'stop',0x11:'gradient'};
+const SVC_RSC = uuid(0x1814), SVC_CPS = uuid(0x1818);
+const shortId = id => { const m = /^0000([0-9a-f]{4})-0000-1000-8000-00805f9b34fb$/i.exec(id); return m ? m[1].toUpperCase() : String(id).toUpperCase(); };
+
+class Trainer {
+  constructor(){ this.pending=null; this.lastSent={}; this.dataSeen=false; }
+
+  async connect(){
+    this.device = await navigator.bluetooth.requestDevice({
+      filters:[{services:[SVC_FTMS]}],
+      optionalServices:[SVC_HR, SVC_DIS]
+    });
+    log(`Selected ${this.device.name||'device'}`);
+    this.device.addEventListener('gattserverdisconnected', () => this.onDisconnect());
+    await this.open();
+  }
+
+  async open(){
+    log('Connecting…');
+    this.server = await this.device.gatt.connect();
+    const svc = await this.server.getPrimaryService(SVC_FTMS);
+    let chars = [];
+    try { chars = await svc.getCharacteristics(); }
+    catch(e){
+      log('Listing characteristics failed, probing one by one');
+      for (const n of [0x2ACC,0x2ACD,0x2AD2,0x2AD4,0x2AD5,0x2AD8,0x2AD9,0x2ADA]){
+        try{ chars.push(await svc.getCharacteristic(uuid(n))); }catch{}
+      }
+    }
+    log('FTMS characteristics: ' + chars.map(c=>shortId(c.uuid)).join(' '));
+    // match whether the browser reports full 128-bit IDs or short ones like "2ACD"
+    const norm = id => { id = String(id).toLowerCase().replace(/^0x/,''); return id.length<=8 ? id.padStart(4,'0').slice(-4) : (shortId(id).length===4 ? shortId(id).toLowerCase() : id); };
+    const get = n => chars.find(c => norm(c.uuid) === n.toString(16).padStart(4,'0'));
+    if (!get(0x2ACD) && !get(0x2AD2)){                   // last resort: ask for each directly
+      for (const n of [0x2ACD,0x2AD2,0x2AD9,0x2ADA,0x2AD4,0x2AD5,0x2AD8]){
+        if (!get(n)) try{ const c = await svc.getCharacteristic(uuid(n)); chars.push(c); }catch{}
+      }
+      log('After direct probe: ' + chars.map(c=>shortId(c.uuid)).join(' '));
+    }
+    this.kind = get(0x2ACD) ? 'treadmill' : get(0x2AD2) ? 'bike' : null;
+    if (!this.kind) throw new Error('Found the device but no bike or treadmill data on it');
+    setSport(this.kind==='treadmill' ? 'run' : 'ride');
+    log(this.kind==='treadmill' ? 'Treadmill detected' : 'Smart bike detected');
+
+    this.data = get(this.kind==='treadmill' ? 0x2ACD : 0x2AD2);
+    this.data.addEventListener('characteristicvaluechanged', e => {
+      try{ this.kind==='treadmill' ? this.onTreadmill(e.target.value) : this.onData(e.target.value); }
+      catch(err){ if (!this.parseWarned){ this.parseWarned=true; log('Data parse issue: '+errMsg(err)); } }
+    });
+    await this.data.startNotifications();
+
+    this.cp = get(0x2AD9) || null;
+    if (this.cp){
+      this.cp.addEventListener('characteristicvaluechanged', e => this.onControl(e.target.value));
+      try{ await this.cp.startNotifications(); }
+      catch(e){ log('Control point unavailable: '+errMsg(e)); this.cp = null; }
+    }
+    if (!this.cp) log('No control access, so display only');
+
+    const st = get(0x2ADA);
+    if (st){ try{ st.addEventListener('characteristicvaluechanged', e => this.onStatus(e.target.value)); await st.startNotifications(); }catch{} }
+
+    if (this.kind==='bike'){
+      try{ const d = await get(0x2AD8).readValue(); log(`Power range ${d.getInt16(0,true)}–${d.getInt16(2,true)} W`); }catch{}
+    } else {
+      try{ const d = await get(0x2AD4).readValue(); this.spdMin=d.getUint16(0,true)/100; this.spdMax=d.getUint16(2,true)/100; log(`Speed range ${this.spdMin}–${this.spdMax} km/h`); }catch{}
+      try{ const d = await get(0x2AD5).readValue(); this.incMin=d.getInt16(0,true)/10; this.incMax=d.getInt16(2,true)/10; this.incStep=Math.max(0.1, d.getUint16(4,true)/10); log(`Incline range ${this.incMin}–${this.incMax}% in ${this.incStep}% steps`); }catch{}
+    }
+
+    this.lastSent = {};
+    if (this.cp){
+      const ok = await this.send([OP.REQUEST_CONTROL]);
+      log(ok ? 'Control granted' : 'Control request not accepted');
+      if (this.kind==='bike') await this.send([OP.START]);   // never auto-start a treadmill belt
+    }
+    S.connected = true;
+    setStatus(`Connected · ${this.device.name||this.kind}`, 'ok');
+  }
+
+  async onDisconnect(){
+    S.connected = false; this.pending = null;
+    setStatus('Disconnected — reconnecting…','bad'); log('Disconnected');
+    for (let i=1;i<=5;i++){
+      await new Promise(r=>setTimeout(r, 1500*i));
+      try{ await this.open(); return; }catch(e){ log(`Reconnect ${i} failed: ${errMsg(e)}`); }
+    }
+    setStatus('Disconnected. Press Connect again.','bad');
+  }
+
+  /* writes are serialised: wait for the indication reply before the next */
+  send(bytes){
+    if (!this.cp) return Promise.resolve(false);
+    this.q = (this.q || Promise.resolve()).then(() => this._send(bytes));
+    return this.q;
+  }
+  _send(bytes){
+    return new Promise(async resolve => {
+      const op = bytes[0];
+      const timer = setTimeout(() => { this.pending=null; log(`No reply to ${OP_NAME[op]}`); resolve(false); }, 2500);
+      this.pending = { op, done:(ok)=>{ clearTimeout(timer); this.pending=null; resolve(ok); } };
+      try{ await this.cp.writeValueWithResponse(new Uint8Array(bytes)); }
+      catch(e){ clearTimeout(timer); this.pending=null; log(`Write failed (${OP_NAME[op]}): ${errMsg(e)}`); resolve(false); }
+    });
+  }
+  get busy(){ return !!this.pending; }
+
+  onControl(dv){
+    if (dv.getUint8(0) !== OP.RESPONSE) return;
+    const req = dv.getUint8(1), res = dv.getUint8(2);
+    const RES = {1:'ok',2:'not supported',3:'invalid parameter',4:'failed',5:'control not permitted'};
+    if (res !== 1) log(`${OP_NAME[req]||req}: ${RES[res]||res}`);
+    if (res === 5 && req !== OP.REQUEST_CONTROL) this.send([OP.REQUEST_CONTROL]);
+    if (this.pending && this.pending.op === req) this.pending.done(res===1);
+  }
+
+  onStatus(dv){
+    const c = dv.getUint8(0);
+    const names = {0x04:'started',0x02:'stopped/paused',0x08:'target power changed',0x12:'sim params changed',0xFF:'control lost'};
+    if (c===0xFF){ log('Another app took control'); }
+    else if (names[c] && c!==0x12 && c!==0x08) log(`Trainer ${names[c]}`);
+  }
+
+  /* Indoor Bike Data 0x2AD2 */
+  onData(dv){
+    let o = 0; const f = dv.getUint16(o,true); o += 2;
+    if (!(f & 0x0001)) { S.bikeSpeed = dv.getUint16(o,true)/100; o += 2; }   // KICKR's own speed, km/h
+    if (f & 0x0002) o += 2;                                // avg speed
+    if (f & 0x0004) { S.cadence = dv.getUint16(o,true)/2; o += 2; }
+    if (f & 0x0008) o += 2;                                // avg cadence
+    if (f & 0x0010) o += 3;                                // total distance
+    if (f & 0x0020) o += 2;                                // resistance level
+    if (f & 0x0040) { S.power = Math.max(0, dv.getInt16(o,true)); o += 2; }
+    if (f & 0x0080) o += 2;                                // avg power
+    if (f & 0x0100) o += 5;                                // energy
+    if (f & 0x0200) { const hr = dv.getUint8(o); o += 1; if (hr>0) S.hr = hr; }
+    if (!this.dataSeen){ this.dataSeen = true; log('Receiving bike data'); }
+  }
+
+  /* Treadmill Data 0x2ACD */
+  onTreadmill(dv){
+    let o = 0; const f = dv.getUint16(o,true); o += 2;
+    if (!(f & 0x0001)) { S.beltSpeed = dv.getUint16(o,true)/100; o += 2; }       // km/h
+    if (f & 0x0002) o += 2;                                                     // avg speed
+    if (f & 0x0004) o += 3;                                                     // total distance
+    if (f & 0x0008) { S.beltIncline = dv.getInt16(o,true)/10; o += 4; }         // incline + ramp angle
+    if (f & 0x0010) o += 4;                                                     // elevation gain
+    if (f & 0x0020) o += 1;                                                     // inst. pace
+    if (f & 0x0040) o += 1;                                                     // avg pace
+    if (f & 0x0080) o += 5;                                                     // energy
+    if (f & 0x0100) { const hr = dv.getUint8(o); o += 1; if (hr>0 && !S.hrStrap) S.hr = hr; }
+    if (!this.dataSeen){ this.dataSeen = true; log(`Receiving treadmill data (flags 0x${f.toString(16)})`); }
+  }
+
+  setSpeed(kmh){
+    if (!S.connected || this.kind!=='treadmill') { log('Connect the treadmill first'); return; }
+    if (!this.cp) { log('This treadmill isn’t accepting control'); return; }
+    if (!(S.beltSpeed > 0.3)) { log('Start the belt on the treadmill first'); return; }
+    if (this.spdMin!=null) kmh = Math.min(this.spdMax, Math.max(this.spdMin, kmh));
+    const v = Math.round(kmh*100);
+    log(`Setting belt speed ${kmh.toFixed(1)} km/h`);
+    this.speedCheck = { kmh, t:performance.now(), tries:(this.speedCheck && this.speedCheck.kmh===kmh) ? this.speedCheck.tries+1 : 1 };
+    this.send([OP.SET_SPEED, v & 0xff, (v>>8) & 0xff]);
+  }
+
+  /* called ~1×/s from the main loop with the road gradient under you */
+  tick(roadGrade){
+    if (!S.connected || this.busy || !this.cp) return;
+    const now = performance.now();
+    if (this.kind === 'treadmill'){
+      const step = this.incStep || 0.5;
+      let want = S.wkIncline!=null ? S.wkIncline : S.runMode==='fixed' ? S.incFixed : roadGrade*S.incScale;
+      want = Math.min(this.incMax ?? 15, Math.max(this.incMin ?? 0, want));
+      want = Math.round(want/step)*step;
+      if (this.lastSent.inc === undefined || (Math.abs(want - this.lastSent.inc) >= Math.max(step,0.5) && now - this.lastSent.t > 4000)){
+        this.lastSent = { inc:want, t:now };
+        const v = Math.round(want*10);
+        this.send([OP.SET_INCLINE, v & 0xff, (v>>8) & 0xff]);
+      }
+      return;
+    }
+    if (S.mode === 'erg'){
+      if (this.lastSent.erg !== S.erg){
+        this.lastSent = { erg:S.erg };
+        const w = S.erg; this.send([OP.SET_POWER, w & 0xff, (w>>8) & 0xff]);
+      }
+      return;
+    }
+    const g = Math.round((S.mode==='manual' ? S.manualGrade : roadGrade*S.difficulty)*10)/10;
+    if (this.lastSent.grade !== g || now - (this.lastSent.t||0) > 8000){
+      this.lastSent = { grade:g, t:now };
+      const dv = new DataView(new ArrayBuffer(7));
+      dv.setUint8(0, OP.SET_SIM);
+      dv.setInt16(1, 0, true);                              // wind speed 0.001 m/s
+      dv.setInt16(3, Math.round(g*100), true);              // grade 0.01 %
+      dv.setUint8(5, Math.round(S.crr*10000));              // Crr 0.0001
+      dv.setUint8(6, Math.round(0.5*1.225*S.cda*100));      // Cw 0.01 kg/m
+      this.send(Array.from(new Uint8Array(dv.buffer)));
+    }
+  }
+}
+const trainer = new Trainer();
+
+function setStatus(t, cls=''){ const s=$('status'); s.textContent=t; s.className=cls; }
+
+$('connect').onclick = async () => {
+  if (!navigator.bluetooth){
+    setStatus('Web Bluetooth isn’t available here. Use Chrome, and if it still fails, open via “Start Ride.command”.','bad');
+    return;
+  }
+  try{
+    setStatus('Choose your bike or treadmill in the popup…');
+    await trainer.connect();
+    $('simToggle').checked = false; setSimulate(false);
+  }catch(e){
+    setStatus(e && e.name==='NotFoundError' ? 'No device chosen' : `Couldn’t connect: ${errMsg(e)}`, 'bad');
+    log(`Connect error: ${errMsg(e)}`);
+  }
+};
+
+/* ---------- Heart rate strap / running footpod ---------- */
+class HRM {
+  async connect(){
+    this.device = await navigator.bluetooth.requestDevice({
+      filters:[{services:[SVC_HR]},{services:[SVC_RSC]}], optionalServices:[SVC_HR, SVC_RSC, SVC_DIS]
+    });
+    this.device.addEventListener('gattserverdisconnected', async () => {
+      S.hrStrap=false; S.footCad=null; $('hrStatus').textContent='Disconnected, retrying…';
+      for (let i=1;i<=5;i++){ await new Promise(r=>setTimeout(r,1500*i)); try{ await this.open(); return; }catch{} }
+      $('hrStatus').textContent='Disconnected';
+    });
+    await this.open();
+  }
+  async open(){
+    const srv = await this.device.gatt.connect(); const got=[];
+    try{
+      const c = await (await srv.getPrimaryService(SVC_HR)).getCharacteristic(uuid(0x2A37));
+      c.addEventListener('characteristicvaluechanged', e => { const d=e.target.value, f=d.getUint8(0); const hr = (f&1)?d.getUint16(1,true):d.getUint8(1); if (hr>0){ S.hr=hr; S.hrStrap=true; } });
+      await c.startNotifications(); got.push('heart rate');
+    }catch{}
+    try{
+      const c = await (await srv.getPrimaryService(SVC_RSC)).getCharacteristic(uuid(0x2A53));
+      c.addEventListener('characteristicvaluechanged', e => { const d=e.target.value; let cad=d.getUint8(3); const spd=d.getUint16(1,true)/256*3.6; if (cad && cad<120 && spd>5) cad*=2; S.footCad = cad; });
+      await c.startNotifications(); got.push('running cadence');
+    }catch{}
+    if (!got.length) throw new Error('No heart rate or cadence found on that device');
+    $('hrStatus').textContent = `${this.device.name||'Sensor'} · ${got.join(' + ')}`;
+    log(`Sensor connected: ${got.join(', ')}`);
+  }
+}
+const hrm = new HRM();
+$('connectHr').onclick = async () => {
+  if (!navigator.bluetooth) return;
+  try{ await hrm.connect(); }catch(e){ if (!(e && e.name==='NotFoundError')) { $('hrStatus').textContent = `Couldn’t connect: ${errMsg(e)}`; log(`Sensor error: ${errMsg(e)}`); } }
+};
+
+/* ---------- Bluetooth explorer: lists everything a device offers and logs changes ---------- */
+const EXPLORE = [0x180A,0x180D,0x180F,0x1814,0x1816,0x1818,0x1826].map(uuid)
+  .concat(Array.from({length:16}, (_,i)=>`a026ee${i.toString(16).padStart(2,'0')}-0a7d-4ab3-97fa-f1500f9feb8b`));
+const NOISY = new Set(['2A63','2AD2','2ACD','2A37','2A53','2A5B']);
+$('explore').onclick = async () => {
+  if (!navigator.bluetooth) return;
+  try{
+    const dev = await navigator.bluetooth.requestDevice({ acceptAllDevices:true, optionalServices:EXPLORE });
+    log(`Explorer: ${dev.name||'device'}`);
+    const srv = dev.gatt.connected ? dev.gatt : await dev.gatt.connect();
+    const svcs = await srv.getPrimaryServices();
+    for (const sv of svcs){
+      log(`Service ${shortId(sv.uuid)}`);
+      let cs=[]; try{ cs = await sv.getCharacteristics(); }catch{}
+      for (const c of cs){
+        const pr = c.properties, flags = ['read','write','writeWithoutResponse','notify','indicate'].filter(k=>pr[k]).join(',');
+        let val=''; if (pr.read){ try{ const d=await c.readValue(); val=' = '+hex(d); }catch{} }
+        log(`  ${shortId(c.uuid)} [${flags}]${val}`);
+        if ((pr.notify||pr.indicate) && !NOISY.has(shortId(c.uuid))){
+          let last='';
+          c.addEventListener('characteristicvaluechanged', e => { const h=hex(e.target.value); if (h!==last){ last=h; log(`  ↳ ${shortId(c.uuid)}: ${h}`); } });
+          try{ await c.startNotifications(); }catch{}
+        }
+      }
+    }
+    log('Explorer: listening. Press buttons and watch for ↳ lines');
+  }catch(e){ if (!(e && e.name==='NotFoundError')) log(`Explorer error: ${errMsg(e)}`); }
+};
+function hex(dv){ return Array.from(new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)).map(b=>b.toString(16).padStart(2,'0')).join(' '); }
+$('copyLog').onclick = async () => {
+  try{ await navigator.clipboard.writeText(logEl.textContent); log('Log copied'); }
+  catch{ const r=document.createRange(); r.selectNodeContents(logEl); const sel=getSelection(); sel.removeAllRanges(); sel.addRange(r); log('Log selected. Use Copy'); }
+};
+
+/* =========================================================
+   COURSE
+   ========================================================= */
+function buildCurve(){
+  const pts=[], N=30;
+  for (let i=0;i<N;i++){
+    const a = i/N*Math.PI*2;
+    const r = 760 + 170*Math.sin(3*a+0.5) + 70*Math.sin(5*a+1.3);
+    pts.push(new THREE.Vector3(Math.cos(a)*r*1.25, elevFn(a), Math.sin(a)*r));
+  }
+  return new THREE.CatmullRomCurve3(pts, true, 'centripetal');
+}
+function elevFn(a){ return 34*Math.sin(a+0.3) + 13*Math.sin(3*a+0.7) + 4*Math.sin(7*a+2.1); }
+
+const curve = buildCurve();
+const L = curve.getLength();
+const M = 2400, ds = L/M;
+const P = [], T = [];
+for (let i=0;i<M;i++){ P.push(curve.getPointAt(i/M)); T.push(curve.getTangentAt(i/M)); }
+const elev = P.map(p=>p.y);
+const gradeArr = (()=>{                        // smoothed over ±15 m
+  const k = Math.max(1, Math.round(15/ds));
+  return elev.map((_,i)=> (elev[(i+k)%M]-elev[(i-k+M)%M])/(2*k*ds)*100);
+})();
+const wrap = s => ((s%L)+L)%L;
+function lerpArr(arr, s){ const f=wrap(s)/ds, i=Math.floor(f)%M, t=f-Math.floor(f); return arr[i]*(1-t)+arr[(i+1)%M]*t; }
+const gradeAt = s => lerpArr(gradeArr, s);
+const elevAt  = s => lerpArr(elev, s);
+$('courseLen').textContent = `${(L/1000).toFixed(2)} km loop · ${Math.round(Math.max(...elev)-Math.min(...elev))} m elevation range`;
+log(`Course ${(L/1000).toFixed(2)} km, grades ${Math.min(...gradeArr).toFixed(1)}% to ${Math.max(...gradeArr).toFixed(1)}%`);
+
+/* =========================================================
+   SCENE
+   ========================================================= */
+const renderer = new THREE.WebGLRenderer({ canvas:$('gl'), antialias:true, powerPreference:'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = MOOD.exposure;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+const FOG = new THREE.Color(MOOD.fog[0]);
+scene.fog = new THREE.Fog(FOG, MOOD.fog[1], MOOD.fog[2]);
+const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 8000);
+
+// Sky — early-morning gradient
+{
+  const g = new THREE.SphereGeometry(6000, 32, 16);
+  const m = new THREE.ShaderMaterial({
+    side:THREE.BackSide, depthWrite:false, fog:false,
+    uniforms:{ top:{value:new THREE.Color(MOOD.sky[0])}, mid:{value:new THREE.Color(MOOD.sky[1])}, sun:{value:new THREE.Color(MOOD.sky[2])}, sunDir:{value:new THREE.Vector3(...MOOD.sunDir).normalize()} },
+    vertexShader:`varying vec3 vP; void main(){ vP=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+    fragmentShader:`uniform vec3 top,mid,sun,sunDir; varying vec3 vP;
+      void main(){ float h=clamp(vP.y,0.,1.); vec3 c=mix(mid,top,pow(h,.55));
+        float s=max(dot(vP,sunDir),0.); c+=sun*pow(s,12.)*.55 + vec3(1.,.93,.82)*pow(s,900.)*2.;
+        gl_FragColor=vec4(c,1.); }`
+  });
+  const sky = new THREE.Mesh(g, m); sky.renderOrder=-1; scene.add(sky);
+  scene.userData.sky = sky;
+}
+
+scene.add(new THREE.HemisphereLight(MOOD.hemi[0], MOOD.hemi[1], MOOD.hemi[2]));
+const sun = new THREE.DirectionalLight(MOOD.sun[0], MOOD.sun[1]);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048,2048);
+Object.assign(sun.shadow.camera, { left:-90, right:90, top:90, bottom:-90, near:1, far:600 });
+sun.shadow.bias = -0.0004;
+scene.add(sun, sun.target);
+const SUN_OFFSET = new THREE.Vector3(MOOD.sunDir[0], Math.max(0.18, MOOD.sunDir[1]+0.15), MOOD.sunDir[2]).normalize().multiplyScalar(300);
+
+// --- terrain height: road-following near the road, rolling hills further out
+const coarse = P.filter((_,i)=>i%4===0);
+function nearestRoad(x,z){
+  let best=1e12, by=0;
+  for (const p of coarse){ const dx=p.x-x, dz=p.z-z, d=dx*dx+dz*dz; if (d<best){best=d; by=p.y;} }
+  return { d:Math.sqrt(best), y:by };
+}
+const smooth = (a,b,x)=>{ const t=Math.min(1,Math.max(0,(x-a)/(b-a))); return t*t*(3-2*t); };
+function roadR(a){ return 760 + 170*Math.sin(3*a+0.5) + 70*Math.sin(5*a+1.3); }
+function isOutside(x,z){ const a=Math.atan2(z,x/1.25); return Math.hypot(x/1.25,z) > roadR(a); }
+function terrainH(x,z){
+  const { d, y } = nearestRoad(x,z);
+  const a = Math.atan2(z, x/1.25), r = Math.hypot(x/1.25, z);
+  const base = elevFn(a) * Math.min(1, r/350) * 0.85;
+  const hills = 20*Math.sin(x*0.0042+1.1)*Math.cos(z*0.0051-0.4) + 8*Math.sin(x*0.013+z*0.009) + 2.5*Math.sin(x*0.043-z*0.031);
+  const far = base + hills*smooth(20,220,d) + 70*smooth(500,1700,d);
+  const k = smooth(8, 140, d);
+  let h = (y-0.45)*(1-k) + far*k;
+  if (MOOD.sea && isOutside(x,z)) h -= 95*smooth(30, 260, d);
+  if (MOOD.mountains){
+    const ridge = Math.abs(Math.sin(x*0.0021+0.7) + Math.sin(z*0.0027-1.1)*0.8 + Math.sin((x+z)*0.0013)*0.6);
+    const mtn = (60 + 220*ridge + 40*Math.sin(x*0.009)*Math.cos(z*0.008)) * smooth(160, 900, d);
+    if (isOutside(x,z)) h += mtn; else h += mtn*0.35;
+    if (MOOD.loch && !isOutside(x,z)) h -= 55*smooth(110, 320, d);
+  }
+  h += (Math.sin(x*0.11)*Math.cos(z*0.13) + Math.sin(x*0.31+z*0.23)*0.5) * 0.6 * smooth(8, 40, d);   // tussocky ground
+  return h;
+}
+
+// Ground
+{
+  const W=5200, H=4600, sx=260, sz=230;
+  const g = new THREE.PlaneGeometry(W,H,sx,sz); g.rotateX(-Math.PI/2);
+  const pos = g.attributes.position, col = new Float32Array(pos.count*3);
+  const c1=new THREE.Color('#6f7a4a'), c2=new THREE.Color('#9a9461'), c3=new THREE.Color('#4f5c3a'), tmp=new THREE.Color();
+  for (let i=0;i<pos.count;i++){
+    const x=pos.getX(i), z=pos.getZ(i), h=terrainH(x,z);
+    pos.setY(i,h);
+    const n = 0.5+0.5*Math.sin(x*0.021+Math.cos(z*0.017)*2.0)*Math.cos(z*0.013);
+    if (MOOD.moor){
+      const heather=new THREE.Color('#574a52'), bracken=new THREE.Color('#77583c'), grass=new THREE.Color('#56603f'), rock=new THREE.Color('#7b7974'), snow=new THREE.Color('#e8ebee');
+      const n2 = 0.5+0.5*Math.sin(x*0.013+Math.sin(z*0.011)*3)*Math.cos(z*0.017-x*0.004);
+      tmp.copy(grass).lerp(bracken, smooth(0.45,0.85,n)*0.75).lerp(heather, smooth(0.45,0.85,n2)*0.7);
+      tmp.lerp(rock, smooth(90,190,h)*0.85).lerp(snow, smooth(210,260,h));
+    } else
+    tmp.copy(c1).lerp(c2, n*0.7).lerp(c3, smooth(10,60,h)*0.5);
+    col.set([tmp.r,tmp.g,tmp.b], i*3);
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col,3));
+  g.computeVertexNormals();
+  let detail = null;
+  if (MOOD.moor){
+    const cv=document.createElement('canvas'); cv.width=cv.height=256; const cx=cv.getContext('2d');
+    cx.fillStyle='#c8c8c8'; cx.fillRect(0,0,256,256);
+    for (let i=0;i<14000;i++){ const v=150+Math.random()*105|0, h=Math.random()*4+1; cx.fillStyle=`rgb(${v},${v},${v})`; cx.fillRect(Math.random()*256,Math.random()*256,1,h); }
+    detail = new THREE.CanvasTexture(cv); detail.wrapS=detail.wrapT=THREE.RepeatWrapping; detail.repeat.set(900,800);
+    detail.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  }
+  const ground = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors:true, map:detail }));
+  ground.receiveShadow = true; scene.add(ground);
+}
+
+// Road
+const HALF = MOOD.single ? 1.9 : 3.4;
+{
+  const cv = document.createElement('canvas'); cv.width=256; cv.height=512;
+  const x = cv.getContext('2d');
+  x.fillStyle='#3b3c3e'; x.fillRect(0,0,256,512);
+  for (let i=0;i<5000;i++){ const v=50+Math.random()*30|0; x.fillStyle=`rgba(${v},${v},${v+2},.5)`; x.fillRect(Math.random()*256,Math.random()*512,1.5,1.5); }
+  if (MOOD.single){
+    x.fillStyle='#4a4b4c'; x.fillRect(0,0,256,512);
+    for (let i=0;i<9000;i++){ const v=60+Math.random()*40|0; x.fillStyle=`rgba(${v},${v},${v},.55)`; x.fillRect(Math.random()*256,Math.random()*512,2,2); }
+    x.fillStyle='rgba(70,80,50,.6)'; x.fillRect(0,0,8,512); x.fillRect(248,0,8,512);   // grassy crumbling edges
+    x.fillStyle='rgba(60,60,60,.25)'; x.fillRect(110,0,36,512);                          // worn centre strip
+  } else {
+  x.fillStyle='#e8e4da'; x.fillRect(10,0,7,512); x.fillRect(239,0,7,512);   // edge lines
+  x.fillStyle='#e9e1c8'; x.fillRect(124,0,8,200);                          // centre dash
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace; tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+  const pos=[], uv=[], idx=[]; const TILE=9;
+  for (let i=0;i<=M;i++){
+    const p=P[i%M], t=T[i%M], side=new THREE.Vector3(-t.z,0,t.x).normalize();
+    pos.push(p.x-side.x*HALF, p.y+0.04, p.z-side.z*HALF,  p.x+side.x*HALF, p.y+0.04, p.z+side.z*HALF);
+    const v=(i*ds)/TILE; uv.push(0,v, 1,v);
+    if (i<M){ const a=i*2; idx.push(a,a+1,a+2, a+1,a+3,a+2); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv,2));
+  g.setIndex(idx); g.computeVertexNormals();
+  const road = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map:tex, roughness:MOOD.wet?0.32:0.92, metalness:0, polygonOffset:true, polygonOffsetFactor:-2 }));
+  road.receiveShadow = true; scene.add(road);
+
+  // verge strip
+  const vp=[], vi=[];
+  for (let i=0;i<=M;i++){
+    const p=P[i%M], t=T[i%M], s=new THREE.Vector3(-t.z,0,t.x).normalize();
+    for (const [o,h] of [[-HALF-1.6,-0.25],[-HALF,0.02],[HALF,0.02],[HALF+1.6,-0.25]]) vp.push(p.x+s.x*o, p.y+h, p.z+s.z*o);
+    if (i<M){ const a=i*4; vi.push(a,a+4,a+1, a+1,a+4,a+5,  a+2,a+6,a+3, a+3,a+6,a+7); }
+  }
+  const vg = new THREE.BufferGeometry();
+  vg.setAttribute('position', new THREE.Float32BufferAttribute(vp,3)); vg.setIndex(vi); vg.computeVertexNormals();
+  const verge = new THREE.Mesh(vg, new THREE.MeshLambertMaterial({ color: MOOD.moor ? '#4d5636' : '#8a8466', side:THREE.DoubleSide }));
+  verge.receiveShadow = true; scene.add(verge);
+}
+
+// Roadside posts every 40 m
+{
+  const step = Math.round(40/ds), count = Math.floor(M/step)*2;
+  const post = new THREE.InstancedMesh(new THREE.BoxGeometry(0.12,1.05,0.12), new THREE.MeshLambertMaterial({color:'#f1eee6'}), count);
+  const cap  = new THREE.InstancedMesh(new THREE.BoxGeometry(0.13,0.12,0.13), new THREE.MeshBasicMaterial({color:'#e2582f'}), count);
+  const m = new THREE.Matrix4(); let n=0;
+  for (let i=0;i<M;i+=step){ if (n>=count) break;
+    const p=P[i], t=T[i], s=new THREE.Vector3(-t.z,0,t.x).normalize();
+    for (const side of [-1,1]){ if (n>=count) break;
+      const x=p.x+s.x*(HALF+1.1)*side, z=p.z+s.z*(HALF+1.1)*side;
+      m.makeTranslation(x,p.y+0.5,z); post.setMatrixAt(n,m);
+      m.makeTranslation(x,p.y+0.86,z); cap.setMatrixAt(n,m); n++;
+    }
+  }
+  post.castShadow = true; if (!MOOD.single) scene.add(post, cap);
+}
+
+// Trees
+{
+  const N = MOOD.pines ? 700 : 2600, rnd = mulberry(7);
+  const trunkG = new THREE.CylinderGeometry(0.18,0.26,2.4,6); trunkG.translate(0,1.2,0);
+  let crownG;
+  if (MOOD.pines){
+    const parts = [[0,7.4,0,2.3],[1.4,6.4,0.6,1.5],[-1.2,6.8,-0.8,1.6],[0.4,8.4,-0.5,1.4],[-0.6,5.6,1.0,1.2]].map(([x,y,z,r])=>{ const gg=new THREE.IcosahedronGeometry(r,0); gg.scale(1.3,0.6,1.3); gg.translate(x,y,z); return gg.toNonIndexed(); });
+    const pos = []; parts.forEach(gg=>pos.push(...gg.attributes.position.array));
+    crownG = new THREE.BufferGeometry(); crownG.setAttribute('position', new THREE.Float32BufferAttribute(pos,3)); crownG.computeVertexNormals();
+    trunkG.scale(0.75,2.6,0.75);
+  } else crownG = new THREE.ConeGeometry(2.2,7.5,7).translate(0,6,0);
+  const trunks = new THREE.InstancedMesh(trunkG, new THREE.MeshLambertMaterial({color: MOOD.pines ? '#7a4a33' : '#4a3b2c'}), N);
+  const crowns = new THREE.InstancedMesh(crownG, new THREE.MeshLambertMaterial({color:'#3f5236'}), N);
+  const m=new THREE.Matrix4(), q=new THREE.Quaternion(), sc=new THREE.Vector3(), ps=new THREE.Vector3(), c=new THREE.Color();
+  let n=0, guard=0;
+  while (n<N && guard++<N*8){
+    // cluster trees around the road so they're seen, plus woodland patches
+    const i = rnd()*M|0, p=P[i], t=T[i], s=new THREE.Vector3(-t.z,0,t.x).normalize();
+    const off = (rnd()<0.5?-1:1) * (14 + Math.pow(rnd(),1.6)*420);
+    const x = p.x + s.x*off + (rnd()-0.5)*30, z = p.z + s.z*off + (rnd()-0.5)*30;
+    const patch = Math.sin(x*0.006)*Math.cos(z*0.007);
+    if (patch < (MOOD.pines ? 0.35 : -0.15) && Math.abs(off) > 40) continue;
+    if (MOOD.loch && terrainH(x,z) < Math.min(...elev)-6) continue;
+    if (nearestRoad(x,z).d < 11) continue;
+    if (MOOD.sea && isOutside(x,z)) continue;
+    const k = 0.65 + rnd()*0.9;
+    ps.set(x, terrainH(x,z)-0.2, z); q.setFromAxisAngle(new THREE.Vector3(0,1,0), rnd()*6.28); sc.set(k, k*(0.85+rnd()*0.4), k);
+    m.compose(ps,q,sc); trunks.setMatrixAt(n,m); crowns.setMatrixAt(n,m);
+    MOOD.pines ? c.setHSL(0.36+rnd()*0.06, 0.22+rnd()*0.1, 0.17+rnd()*0.06) : c.setHSL(0.22+rnd()*0.08, 0.25+rnd()*0.12, (0.30+rnd()*0.12)*MOOD.treeL); crowns.setColorAt(n,c);
+    n++;
+  }
+  trunks.count = crowns.count = n;
+  crowns.castShadow = trunks.castShadow = true;
+  scene.add(trunks, crowns);
+}
+function mulberry(a){ return ()=>{ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+
+// Placeholder bike + rider (forward = +z)
+const bike = new THREE.Group();
+const wheels = [];
+{
+  const dark = new THREE.MeshStandardMaterial({ color:'#1d1f22', roughness:0.6 });
+  const frameM = new THREE.MeshStandardMaterial({ color:'#d6633a', roughness:0.4, metalness:0.2 });
+  const kit = new THREE.MeshStandardMaterial({ color:'#2d3440', roughness:0.8 });
+  const skin = new THREE.MeshStandardMaterial({ color:'#c99a7c', roughness:0.8 });
+  for (const z of [-0.5, 0.5]){
+    const w = new THREE.Group();
+    w.add(new THREE.Mesh(new THREE.TorusGeometry(0.33,0.025,8,40), dark));
+    for (let k=0;k<6;k++){ const sp=new THREE.Mesh(new THREE.BoxGeometry(0.005,0.64,0.005), dark); sp.rotation.x=k*Math.PI/6; w.add(sp); }
+    w.children.forEach(c=>c.rotation.y += c.geometry.type==='TorusGeometry'?Math.PI/2:0);
+    w.position.set(0,0.34,z); bike.add(w); wheels.push(w);
+  }
+  const tube = (a,b,r=0.022)=>{ const A=new THREE.Vector3(...a),B=new THREE.Vector3(...b);
+    const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,A.distanceTo(B),8), frameM);
+    m.position.copy(A).add(B).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), B.clone().sub(A).normalize()); bike.add(m); };
+  tube([0,0.34,-0.5],[0,0.36,-0.05]); tube([0,0.36,-0.05],[0,0.82,-0.12]); tube([0,0.82,-0.12],[0,0.8,0.42]);
+  tube([0,0.36,-0.05],[0,0.76,0.4]); tube([0,0.34,-0.5],[0,0.82,-0.12]); tube([0,0.34,0.5],[0,0.92,0.44]);
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.015,0.015,0.42,8), dark); bar.rotation.z=Math.PI/2; bar.position.set(0,0.94,0.46); bike.add(bar);
+  // rider
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.17,0.42,4,10), kit); torso.position.set(0,1.18,0.12); torso.rotation.x = 1.05; bike.add(torso);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.12,16,12), skin); head.position.set(0,1.38,0.44); bike.add(head);
+  const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.135,16,12,0,Math.PI*2,0,Math.PI/2), frameM); helmet.position.copy(head.position); helmet.position.y+=0.02; bike.add(helmet);
+  for (const sx of [-0.12,0.12]){ const arm=new THREE.Mesh(new THREE.CapsuleGeometry(0.045,0.42,4,8), kit); arm.position.set(sx,1.13,0.35); arm.rotation.x=0.55; bike.add(arm); }
+  bike.userData.legs = [];
+  for (const sx of [-0.1,0.1]){ const leg=new THREE.Mesh(new THREE.CapsuleGeometry(0.07,0.6,4,8), kit); leg.position.set(sx,0.75,-0.08); bike.add(leg); bike.userData.legs.push(leg); }
+  bike.traverse(o=>{ if(o.isMesh) o.castShadow=true; });
+}
+scene.add(bike);
+
+// ---- mood extras ----
+if (MOOD.sea){
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(20000,20000), new THREE.MeshStandardMaterial({ color:'#2f4d66', roughness:0.12, metalness:0.35 }));
+  water.rotation.x = -Math.PI/2; water.position.y = Math.min(...elev) - 38; scene.add(water);
+}
+if (MOOD.loch){
+  const w = new THREE.Mesh(new THREE.PlaneGeometry(6000,6000), new THREE.MeshStandardMaterial({ color:'#4f5d66', roughness:0.08, metalness:0.55 }));
+  w.rotation.x = -Math.PI/2; w.position.y = Math.min(...elev) - 7; scene.add(w);
+}
+if (MOOD.rocks){
+  const rnd = mulberry(21), N = 900, g = new THREE.DodecahedronGeometry(1,0), mat = new THREE.MeshLambertMaterial({ color:'#8a8780' });
+  const im = new THREE.InstancedMesh(g, mat, N), m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(); let n=0;
+  for (let k=0;k<N*3 && n<N;k++){
+    const i = rnd()*M|0, p=P[i], t=T[i], s=new THREE.Vector3(-t.z,0,t.x).normalize(), off=(rnd()<0.5?-1:1)*(5+Math.pow(rnd(),2)*260);
+    const x=p.x+s.x*off, z=p.z+s.z*off; if (nearestRoad(x,z).d < 4.5) continue;
+    const r = 0.25+Math.pow(rnd(),3)*2.6; sc.set(r*(0.8+rnd()*0.6), r*(0.5+rnd()*0.5), r*(0.8+rnd()*0.6));
+    q.setFromEuler(new THREE.Euler(rnd()*3,rnd()*3,rnd()*3)); m.compose(new THREE.Vector3(x, terrainH(x,z)+r*0.2, z), q, sc); im.setMatrixAt(n++, m);
+  }
+  im.count = n; im.castShadow = true; im.receiveShadow = true; scene.add(im);
+}
+if (MOOD.single){
+  // passing places: a widened bay every ~300 m with the white diamond sign
+  const cv = document.createElement('canvas'); cv.width=cv.height=256; const x=cv.getContext('2d');
+  x.fillStyle='#f4f2ec'; x.translate(128,128); x.rotate(Math.PI/4); x.fillRect(-88,-88,176,176); x.rotate(-Math.PI/4);
+  x.fillStyle='#1d1d1d'; x.font='bold 30px Arial, sans-serif'; x.textAlign='center'; x.fillText('Passing',0,-6); x.fillText('Place',0,28);
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  const signM = new THREE.MeshLambertMaterial({ map:tex, transparent:true, alphaTest:0.5, side:THREE.DoubleSide }), poleM = new THREE.MeshLambertMaterial({ color:'#3a3a3a' });
+  const bayM = new THREE.MeshStandardMaterial({ color:'#4a4b4c', roughness:0.95 });
+  for (let i=60; i<M; i+=Math.round(300/ds)){
+    const p=P[i], t=T[i], s=new THREE.Vector3(-t.z,0,t.x).normalize(), side = (i/Math.round(300/ds))%2 ? 1 : -1;
+    const g = new THREE.Group();
+    const bay = new THREE.Mesh(new THREE.BoxGeometry(2.6,0.06,26), bayM); bay.position.set(side*(HALF+1.1),0.0,0); bay.receiveShadow=true; g.add(bay);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,2.2,6), poleM); pole.position.set(side*(HALF+2.6),1.1,6); g.add(pole);
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.9,0.9), signM); sign.position.set(side*(HALF+2.6),2.1,6.05); g.add(sign);
+    g.position.copy(p); g.lookAt(p.clone().add(new THREE.Vector3(t.x,0,t.z))); g.rotateY(Math.PI); scene.add(g);
+  }
+}
+const lampHeads = [], lampLights = [];
+if (MOOD.lamps){
+  const step = Math.round(42/ds), poleG = new THREE.CylinderGeometry(0.07,0.09,7,6), armG = new THREE.BoxGeometry(0.08,0.08,1.6), headG = new THREE.BoxGeometry(0.5,0.12,0.25);
+  const poleM = new THREE.MeshStandardMaterial({ color:'#22252a', roughness:0.6 }), headM = new THREE.MeshBasicMaterial({ color:'#ffc27a' });
+  const n = Math.floor(M/step), pole = new THREE.InstancedMesh(poleG, poleM, n), arm = new THREE.InstancedMesh(armG, poleM, n), head = new THREE.InstancedMesh(headG, headM, n);
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1,1,1);
+  for (let k=0;k<n;k++){
+    const i = k*step, p = P[i], t = T[i], s = new THREE.Vector3(-t.z,0,t.x).normalize();
+    const base = p.clone().addScaledVector(s, -(HALF+1.6)), yaw = Math.atan2(s.x, s.z);
+    q.setFromAxisAngle(new THREE.Vector3(0,1,0), yaw);
+    m.compose(base.clone().setY(p.y+3.5), q, one); pole.setMatrixAt(k,m);
+    m.compose(base.clone().addScaledVector(s,0.75).setY(p.y+6.95), q, one); arm.setMatrixAt(k,m);
+    const hp = base.clone().addScaledVector(s,1.45).setY(p.y+6.85); m.compose(hp, q, one); head.setMatrixAt(k,m);
+    lampHeads.push(hp);
+  }
+  pole.castShadow = true; scene.add(pole, arm, head);
+  for (let i=0;i<10;i++){ const L = new THREE.PointLight('#ffae5e', 60, 34, 1.6); scene.add(L); lampLights.push(L); }
+}
+function updateLamps(){
+  if (!lampLights.length) return;
+  const cp = camera.position;
+  const near = lampHeads.map(h=>[h, h.distanceToSquared(cp)]).sort((a,b)=>a[1]-b[1]).slice(0, lampLights.length);
+  near.forEach(([h],i)=>{ lampLights[i].position.copy(h).add(new THREE.Vector3(0,-0.3,0)); });
+}
+let composer = null;
+function setupComposer(){
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), MOOD.bloom, 0.55, 0.72));
+  composer.addPass(new OutputPass());
+}
+setupComposer();
+
+// Placeholder runner (forward = +z)
+const runner = new THREE.Group();
+{
+  const kit = new THREE.MeshStandardMaterial({ color:'#2d3440', roughness:0.8 });
+  const top = new THREE.MeshStandardMaterial({ color:'#d6633a', roughness:0.6 });
+  const skin = new THREE.MeshStandardMaterial({ color:'#c99a7c', roughness:0.8 });
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.16,0.42,4,10), top); torso.position.y=1.28; torso.rotation.x=0.12; runner.add(torso);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.11,16,12), skin); head.position.set(0,1.68,0.06); runner.add(head);
+  const limb = (len, r, mat, y, x) => { const g=new THREE.Group(); g.position.set(x,y,0); const m=new THREE.Mesh(new THREE.CapsuleGeometry(r,len,4,8),mat); m.position.y=-len/2-r; g.add(m); runner.add(g); return g; };
+  runner.userData.legs = [limb(0.72,0.07,kit,0.98,-0.09), limb(0.72,0.07,kit,0.98,0.09)];
+  runner.userData.arms = [limb(0.42,0.045,skin,1.5,-0.21), limb(0.42,0.045,skin,1.5,0.21)];
+  runner.traverse(o=>{ if(o.isMesh) o.castShadow=true; });
+  runner.visible = false;
+}
+scene.add(runner);
+let stride = 0;
+
+/* =========================================================
+   PHYSICS — power + slope → speed
+   ========================================================= */
+function stepPhysics(dt, power, gradePct){
+  const g=9.81, rho=1.225, eta=0.976, m=S.mass;
+  const th = Math.atan(gradePct/100);
+  const v = S.v, vEff = Math.max(v, 1.2);
+  const F = (power*eta)/vEff - m*g*Math.sin(th) - m*g*S.crr*Math.cos(th) - 0.5*rho*S.cda*v*v;
+  S.v = Math.max(0, v + F/(m+1.4)*dt);
+  S.dist += S.v*dt;
+}
+
+/* =========================================================
+   ELEVATION PROFILE
+   ========================================================= */
+const prof = $('profile'), pctx = prof.getContext('2d');
+let profBase = null;
+function drawProfileBase(){
+  const r = Math.min(devicePixelRatio,2);
+  prof.width = prof.clientWidth*r; prof.height = prof.clientHeight*r;
+  const w=prof.width, h=prof.height, lo=Math.min(...elev)-4, hi=Math.max(...elev)+4;
+  const off = document.createElement('canvas'); off.width=w; off.height=h; const c=off.getContext('2d');
+  const y = e => h - 8*r - (e-lo)/(hi-lo)*(h-22*r);
+  c.beginPath(); c.moveTo(0,h);
+  for (let i=0;i<=w;i++) c.lineTo(i, y(elevAt(i/w*L)));
+  c.lineTo(w,h); c.closePath();
+  const gr = c.createLinearGradient(0,0,0,h); gr.addColorStop(0,'rgba(255,179,107,.42)'); gr.addColorStop(1,'rgba(255,179,107,.04)');
+  c.fillStyle=gr; c.fill();
+  c.beginPath(); for (let i=0;i<=w;i++) c.lineTo(i, y(elevAt(i/w*L)));
+  c.strokeStyle='rgba(255,210,170,.85)'; c.lineWidth=1.5*r; c.stroke();
+  profBase = { img:off, y, r };
+}
+function drawProfile(){
+  if (!profBase) return;
+  const w=prof.width, h=prof.height, {img,y,r}=profBase;
+  pctx.clearRect(0,0,w,h); pctx.drawImage(img,0,0);
+  const x = wrap(S.dist)/L*w;
+  pctx.fillStyle='rgba(255,255,255,.85)'; pctx.fillRect(x-r, 4*r, 2*r, h-8*r);
+  pctx.beginPath(); pctx.arc(x, y(elevAt(S.dist)), 5*r, 0, 7); pctx.fillStyle='#fff'; pctx.fill();
+}
+
+/* =========================================================
+   UI wiring
+   ========================================================= */
+function setSimulate(on){
+  S.simulate = on; $('simCtl').classList.toggle('hidden-el', !on);
+  if (on && !S.connected) log(S.sport==='run' ? 'Simulating belt speed' : 'Simulating power');
+}
+function setSport(sp){
+  S.sport = sp; document.body.classList.toggle('run', sp==='run');
+  document.querySelector('#panel h1').textContent = sp==='run' ? 'Run' : 'Ride';
+  [...$('sportSeg').children].forEach(b=>b.classList.toggle('on', b.dataset.sport===sp));
+  trainer.lastSent = {}; S.v = 0;
+}
+$('sportSeg').onclick = e => { if (e.target.dataset.sport && !S.connected) setSport(e.target.dataset.sport); };
+$('simSpeed').oninput = e => { S.simSpeed=+e.target.value; $('simSpeedOut').textContent=`${S.simSpeed.toFixed(1)} km/h`; };
+$('incScale').oninput = e => { S.incScale=e.target.value/100; $('incScaleOut').textContent=`${e.target.value}%`; };
+$('incFixed').oninput = e => { S.incFixed=+e.target.value; $('incFixedOut').textContent=`${S.incFixed.toFixed(1)}%`; };
+$('runModeSeg').onclick = e => {
+  const m = e.target.dataset.rmode; if (!m) return; S.runMode = m;
+  [...$('runModeSeg').children].forEach(b=>b.classList.toggle('on', b.dataset.rmode===m));
+  $('ctl-rcourse').classList.toggle('hidden-el', m!=='course'); $('ctl-rfixed').classList.toggle('hidden-el', m!=='fixed');
+  trainer.lastSent = {};
+};
+$('setSpeed').onclick = () => trainer.setSpeed(+$('tgtSpeed').value);
+$('simToggle').onchange = e => setSimulate(e.target.checked);
+$('simPower').oninput = e => { S.simPower=+e.target.value; $('simPowerOut').textContent=`${S.simPower} W`; };
+$('diff').oninput = e => { S.difficulty=e.target.value/100; $('diffOut').textContent=`${e.target.value}%`; };
+$('erg').oninput  = e => { S.erg=+e.target.value; $('ergOut').textContent=`${S.erg} W`; };
+$('man').oninput  = e => { S.manualGrade=+e.target.value; $('manOut').textContent=`${S.manualGrade.toFixed(1)}%`; };
+const BIKE_KG = 8;
+function setRiderKg(kg){ kg = Math.min(150, Math.max(30, +kg || 69)); S.mass = kg + BIKE_KG; $('mass').value = kg; try{ localStorage.setItem('kr.riderKg', JSON.stringify(kg)); }catch{} }
+$('mass').onchange = e => setRiderKg(e.target.value);
+try{ setRiderKg(JSON.parse(localStorage.getItem('kr.riderKg')) ?? 69); }catch{ setRiderKg(69); }
+$('modeSeg').onclick = e => {
+  const m = e.target.dataset.mode; if (!m) return; S.mode = m;
+  [...$('modeSeg').children].forEach(b=>b.classList.toggle('on', b.dataset.mode===m));
+  for (const k of ['sim','erg','manual']) $('ctl-'+k).classList.toggle('hidden-el', k!==m);
+  trainer.lastSent = {}; log(`Mode: ${e.target.textContent}`);
+};
+function setView(v){ S.view=v; [...$('viewSeg').children].forEach(b=>b.classList.toggle('on', b.dataset.view===v)); }
+$('viewSeg').onclick = e => e.target.dataset.view && setView(e.target.dataset.view);
+function toggleFS(){
+  const d=document, el=d.documentElement;
+  const isFS = d.fullscreenElement || d.webkitFullscreenElement;
+  try{
+    if (isFS) (d.exitFullscreen||d.webkitExitFullscreen).call(d);
+    else {
+      const req = el.requestFullscreen || el.webkitRequestFullscreen;
+      if (!req) { log('Fullscreen isn’t supported in this browser'); return; }
+      const r = req.call(el); if (r && r.catch) r.catch(e=>log('Fullscreen blocked: '+e.message));
+    }
+  }catch(e){ log('Fullscreen blocked: '+e.message); }
+}
+$('fs').onclick = toggleFS;
+$('reset').onclick = () => resetSession();
+// 1 Hz ride log for calibration: our model vs the KICKR's own speed
+const samples = [];
+function logSample(power, grade){
+  if (!(S.connected || S.simulate)) return;
+  samples.push([new Date().toISOString(), S.sport, S.elapsed.toFixed(1), Math.round(power), Math.round(S.cadence),
+    (S.v*3.6).toFixed(2), S.bikeSpeed!=null ? S.bikeSpeed.toFixed(2) : '', grade.toFixed(2),
+    S.mode==='manual'?S.manualGrade:(S.mode==='erg'?'':(grade*S.difficulty).toFixed(2)), S.sport==='run'?S.runMode:S.mode, S.mass, (S.dist).toFixed(1), S.hr??'', S.beltSpeed??'', S.beltIncline??'']);
+}
+$('dl').onclick = () => {
+  if (!samples.length){ log('Nothing recorded yet'); return; }
+  const head = 'time,sport,elapsed_s,power_w,cadence,app_speed_kmh,kickr_speed_kmh,road_grade_pct,grade_sent_pct,mode,mass_kg,distance_m,hr_bpm,belt_speed_kmh,belt_incline_pct';
+  const blob = new Blob([head+'\n'+samples.map(r=>r.join(',')).join('\n')], {type:'text/csv'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `${S.sport}-${new Date().toISOString().slice(0,16).replace(/[:T]/g,'-')}.csv`; a.click();
+  log(`Saved ${samples.length} s of data`);
+};
+const togglePanel = () => { const hidden=$('panel').classList.toggle('hidden'); $('panelTab').style.display = hidden?'block':'none'; };
+$('panelTab').onclick = togglePanel;
+$('hidePanel').onclick = togglePanel;
+addEventListener('keydown', e => {
+  if (e.target.tagName==='INPUT' && e.target.type==='number') return;
+  const k = e.key.toLowerCase();
+  if (k==='v') setView(S.view==='fp'?'chase':'fp');
+  else if (k==='f') toggleFS();
+  else if (k==='h') togglePanel();
+  else if (k==='p') requestShot('manual');
+  else if (e.key==='ArrowUp' || e.key==='ArrowDown'){
+    e.preventDefault();
+    if (!S.simulate){ $('simToggle').checked=true; setSimulate(true); }
+    if (S.sport==='run'){
+      S.simSpeed = Math.max(0, Math.min(20, +(S.simSpeed + (e.key==='ArrowUp'?0.5:-0.5)).toFixed(1)));
+      $('simSpeed').value=S.simSpeed; $('simSpeedOut').textContent=`${S.simSpeed.toFixed(1)} km/h`;
+    } else {
+      S.simPower = Math.max(0, Math.min(600, S.simPower + (e.key==='ArrowUp'?10:-10)));
+      $('simPower').value=S.simPower; $('simPowerOut').textContent=`${S.simPower} W`;
+    }
+  }
+});
+// keep the screen awake while riding
+let wakeLock=null;
+async function keepAwake(){ try{ wakeLock = await navigator.wakeLock?.request('screen'); }catch{} }
+document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState==='visible') keepAwake(); });
+keepAwake();
+
+function resize(){
+  const w=innerWidth, h=innerHeight;
+  renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix();
+  drawProfileBase();
+}
+addEventListener('resize', resize); resize();
+
+/* =========================================================
+   STORAGE (per device)
+   ========================================================= */
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem('kr.'+k); return v ? JSON.parse(v) : d; }catch{ return d; } },
+  set(k, v){ try{ localStorage.setItem('kr.'+k, JSON.stringify(v)); }catch{} }
+};
+
+/* =========================================================
+   ACTIVITY RECORDING + STRAVA (TCX)
+   ========================================================= */
+let track = [], lapStarts = [0];
+function recordPoint(power){
+  if (S.frozen || !(S.connected || S.simulate) || S.elapsed <= 0) return;
+  track.push({ t:Date.now(), d:S.dist, v:S.v, hr:S.hr||null, cad:S.cadence>0?Math.round(S.cadence):null,
+    w:S.sport==='ride'?Math.round(power):null, alt: S.sport==='ride' ? elevAt(S.dist)+60 : S.runAlt+60 });
+}
+function resetSession(){
+  if (W.active) finishWorkout(false, true);
+  S.dist=0; S.v=0; S.elapsed=0; S.runAlt=0; samples.length=0; track=[]; lapStarts=[0]; S.frozen=false;
+  shots.forEach(s=>URL.revokeObjectURL(s.url)); shots.length=0; nextAuto = 240 + Math.random()*600;
+  log('New session');
+}
+const isoS = t => new Date(t).toISOString().replace(/\.\d{3}Z$/,'Z');
+function buildTCX(){
+  if (track.length < 2) return null;
+  const run = S.sport==='run', pts = track, d0 = pts[0].d;
+  const starts = [...new Set(lapStarts.filter(i=>i>=0 && i<pts.length))].sort((a,b)=>a-b);
+  if (starts[0] !== 0) starts.unshift(0);
+  let x = `<?xml version="1.0" encoding="UTF-8"?>
+<TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2" xmlns:ns3="http://www.garmin.com/xmlschemas/ActivityExtension/v2">
+<Activities><Activity Sport="${run?'Running':'Biking'}"><Id>${isoS(pts[0].t)}</Id>
+`;
+  starts.forEach((s, k) => {
+    const e = (starts[k+1] ?? pts.length) - 1; if (e < s) return;
+    const seg = pts.slice(s, e+1), prevD = s>0 ? pts[s-1].d : d0;
+    const tt = Math.max(1, (seg[seg.length-1].t - seg[0].t)/1000 + 1);
+    x += `<Lap StartTime="${isoS(seg[0].t)}"><TotalTimeSeconds>${tt.toFixed(0)}</TotalTimeSeconds><DistanceMeters>${(seg[seg.length-1].d - prevD).toFixed(1)}</DistanceMeters><Calories>0</Calories><Intensity>Active</Intensity><TriggerMethod>Manual</TriggerMethod><Track>
+`;
+    for (const q of seg){
+      x += `<Trackpoint><Time>${isoS(q.t)}</Time><AltitudeMeters>${q.alt.toFixed(1)}</AltitudeMeters><DistanceMeters>${(q.d-d0).toFixed(1)}</DistanceMeters>`;
+      if (q.hr) x += `<HeartRateBpm><Value>${q.hr}</Value></HeartRateBpm>`;
+      if (!run && q.cad!=null) x += `<Cadence>${Math.min(254,q.cad)}</Cadence>`;
+      x += `<Extensions><ns3:TPX><ns3:Speed>${q.v.toFixed(2)}</ns3:Speed>`;
+      if (run && q.cad!=null) x += `<ns3:RunCadence>${Math.round(q.cad/2)}</ns3:RunCadence>`;
+      if (!run && q.w!=null) x += `<ns3:Watts>${q.w}</ns3:Watts>`;
+      x += `</ns3:TPX></Extensions></Trackpoint>
+`;
+    }
+    x += `</Track></Lap>
+`;
+  });
+  x += `<Creator xsi:type="Device_t" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><Name>Kicks Ride</Name></Creator></Activity></Activities></TrainingCenterDatabase>
+`;
+  return x;
+}
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+async function saveFile(name, text, type){
+  const file = new File([text], name, { type });
+  if (isIOS && navigator.canShare && navigator.canShare({ files:[file] })){
+    try{ await navigator.share({ files:[file], title:name }); return; }catch(e){ if (e && e.name==='AbortError') return; }
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+}
+function openDone(){
+  S.frozen = true;
+  const run = S.sport==='run', n = track.length;
+  const hrs = track.map(q=>q.hr).filter(Boolean), avg = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : null;
+  const dist = n ? (track[n-1].d - track[0].d) : 0, secs = S.elapsed;
+  const st = [['Time', fmtTime(secs)], ['Distance', `${(dist/1000).toFixed(2)} km`]];
+  if (run){ const sp = dist>0 ? Math.round(secs/(dist/1000)) : 0; st.push(['Avg pace', sp ? `${Math.floor(sp/60)}:${String(sp%60).padStart(2,'0')}/km` : '–']); }
+  else { const w = avg(track.map(q=>q.w).filter(v=>v!=null)); st.push(['Avg power', w!=null ? `${Math.round(w)} W` : '–']); st.push(['Avg speed', secs ? `${(dist/secs*3.6).toFixed(1)} km/h` : '–']); }
+  const h = avg(hrs); if (h) st.push(['Avg HR', `${Math.round(h)} bpm`]);
+  if (lapStarts.length > 1) st.push(['Laps', String(new Set(lapStarts).size)]);
+  $('doneTitle').textContent = W.lastName ? W.lastName : (run ? 'Treadmill run' : 'Indoor ride');
+  $('doneSub').textContent = n ? `${n} seconds recorded` : 'Nothing recorded yet. Ride or run for a bit first.';
+  $('doneStats').innerHTML = st.map(([k,v])=>`<div><span>${k}</span><b>${v}</b></div>`).join('');
+  $('upStatus').textContent = ''; stravaUI(); renderShots();
+  $('doneModal').classList.remove('hidden-el');
+}
+$('finish').onclick = () => { if (W.active) finishWorkout(false); openDone(); };
+$('keepGoing').onclick = () => { S.frozen = false; $('doneModal').classList.add('hidden-el'); };
+$('newSession').onclick = () => { resetSession(); W.lastName = null; $('doneModal').classList.add('hidden-el'); };
+$('openStrava').onclick = () => window.open('https://www.strava.com/upload/select', '_blank');
+$('saveTcx').onclick = async () => {
+  const x = buildTCX(); if (!x){ log('Nothing to save yet'); return; }
+  const stamp = new Date(track[0].t).toISOString().slice(0,16).replace(/[:T]/g,'-');
+  await saveFile(`${S.sport==='run'?'run':'ride'}-${stamp}.tcx`, x, 'application/vnd.garmin.tcx+xml');
+  log('Activity file saved');
+};
+
+/* ---------- Strava: connect + direct upload via the relay ---------- */
+const STRAVA_ID = 295158, REDIRECT = 'https://mrjimcampbell.github.io/kicks-ride/';
+const DEFAULT_RELAY = 'https://kicks-ride-strava.jim-campbell.workers.dev';
+const relay = () => (store.get('relay', '') || DEFAULT_RELAY).replace(/\/+$/,'');
+const tok = { get: () => store.get('strava', null), set: v => store.set('strava', v) };
+function stravaUI(){
+  const t = tok.get();
+  $('stravaBtn').textContent = t ? `Strava connected${t.name ? ' · '+t.name : ''} (tap to disconnect)` : 'Connect Strava';
+  $('relayRow').classList.toggle('hidden-el', !!(t && relay()));
+  $('relayUrl').value = relay();
+  $('uploadStrava').classList.toggle('hidden-el', !t);
+  $('saveTcx').classList.toggle('primary', !t);
+}
+$('relayUrl').onchange = e => { store.set('relay', e.target.value.trim()); stravaUI(); };
+$('stravaBtn').onclick = () => {
+  if (tok.get()){ tok.set(null); log('Strava disconnected'); stravaUI(); return; }
+  if (!relay()){ log('Paste the Strava relay address first'); $('relayRow').classList.remove('hidden-el'); $('relayUrl').focus(); return; }
+  if (location.origin + location.pathname !== REDIRECT){ log(`Connect Strava from ${REDIRECT}`); return; }
+  location.href = `https://www.strava.com/oauth/authorize?client_id=${STRAVA_ID}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT)}&approval_prompt=auto&scope=activity:write`;
+};
+async function relayJSON(path, opts){
+  const r = await fetch(relay() + path, opts); let d = {};
+  try{ d = await r.json(); }catch{}
+  if (!r.ok) throw new Error(d.message || d.error || (d.errors && JSON.stringify(d.errors)) || `HTTP ${r.status}`);
+  return d;
+}
+(async () => {
+  const q = new URLSearchParams(location.search);
+  if (!q.get('code') && !q.get('error')) return;
+  history.replaceState(null, '', location.pathname);
+  if (q.get('error')){ log('Strava connection cancelled'); return; }
+  if (!(q.get('scope') || '').includes('activity:write')){ log('Strava: tick “upload activities” when connecting'); return; }
+  try{
+    const d = await relayJSON('/token', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ code:q.get('code') }) });
+    tok.set({ access:d.access_token, refresh:d.refresh_token, exp:d.expires_at, name:d.athlete && d.athlete.firstname });
+    log('Strava connected');
+  }catch(e){ log('Strava connect failed: ' + errMsg(e)); }
+  stravaUI();
+})();
+async function accessToken(){
+  let t = tok.get(); if (!t) throw new Error('Not connected to Strava');
+  if (Date.now()/1000 > t.exp - 120){
+    const d = await relayJSON('/refresh', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ refresh_token:t.refresh }) });
+    t = { ...t, access:d.access_token, refresh:d.refresh_token, exp:d.expires_at }; tok.set(t);
+  }
+  return t.access;
+}
+$('uploadStrava').onclick = async () => {
+  const x = buildTCX(); const st = $('upStatus');
+  if (!x){ st.textContent = 'Nothing recorded yet'; return; }
+  $('uploadStrava').disabled = true; st.textContent = 'Uploading…';
+  try{
+    const fd = new FormData();
+    fd.append('file', new Blob([x], { type:'application/xml' }), 'activity.tcx');
+    fd.append('data_type', 'tcx'); fd.append('trainer', '1');
+    fd.append('name', $('doneTitle').textContent);
+    fd.append('external_id', `kicks-ride-${track[0].t}`);
+    const auth = { Authorization: 'Bearer ' + await accessToken() };
+    let d = await relayJSON('/upload', { method:'POST', headers:auth, body:fd });
+    for (let i=0; i<20 && !d.activity_id && !d.error; i++){
+      await new Promise(r=>setTimeout(r, 2000)); st.textContent = d.status || 'Processing…';
+      d = await relayJSON(`/upload/${d.id}`, { headers:auth });
+    }
+    if (d.error) throw new Error(d.error);
+    if (d.activity_id){ st.innerHTML = `Uploaded ✓ <a href="https://www.strava.com/activities/${d.activity_id}" target="_blank" style="color:var(--accent)">View on Strava</a>`; log('Uploaded to Strava'); }
+    else st.textContent = 'Uploaded. Strava is still processing it.';
+  }catch(e){ st.textContent = 'Upload failed: ' + errMsg(e); log('Strava upload failed: ' + errMsg(e)); }
+  $('uploadStrava').disabled = false;
+};
+stravaUI();
+
+/* =========================================================
+   WORKOUTS — model, library, builder
+   ========================================================= */
+const parsePace = str => { const m = /^\s*(\d{1,2})[:.](\d{2})\s*$/.exec(String(str)); return m ? (+m[1])*60 + (+m[2]) : NaN; };
+const fmtPace = sec => { sec = Math.round(sec); return `${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`; };
+const fmtMS = sec => { sec = Math.max(0, Math.ceil(sec)); return `${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`; };
+
+const PRESETS = [
+  { id:'p-run-400', builtin:true, sport:'run', name:'8 × 400 m', params:{type:'int', wu:10, wuPace:'6:30', reps:8, repDist:400, repPace:'4:15', rec:60, recSpeed:5, repInc:1, recInc:1, cd:5, cdPace:'6:30'} },
+  { id:'p-run-800', builtin:true, sport:'run', name:'6 × 800 m', params:{type:'int', wu:10, wuPace:'6:30', reps:6, repDist:800, repPace:'4:30', rec:90, recSpeed:5, repInc:1, recInc:1, cd:5, cdPace:'6:30'} },
+  { id:'p-run-easy', builtin:true, sport:'run', name:'Easy 30 min (pace-capped)', params:{type:'steady', sDur:30, sPace:'6:30', sInc:1} },
+  { id:'p-ride-vo2', builtin:true, sport:'ride', name:'5 × 3 min hard', params:{wu:10, wuPct:55, reps:5, repMin:3, repPct:115, rec:3, recPct:50, cd:5, cdPct:50} },
+  { id:'p-ride-ss', builtin:true, sport:'ride', name:'3 × 10 min sweet spot', params:{wu:10, wuPct:55, reps:3, repMin:10, repPct:90, rec:5, recPct:50, cd:5, cdPct:50} },
+  { id:'p-ride-30-30', builtin:true, sport:'ride', name:'10 × 30/30', params:{wu:10, wuPct:55, reps:10, repMin:0.5, repPct:130, rec:0.5, recPct:45, cd:5, cdPct:50} },
+];
+const ftp = () => store.get('ftp', 200);
+
+function buildSteps(wk){
+  const p = wk.params, st = [];
+  if (wk.sport === 'run'){
+    if (p.type === 'steady'){ st.push({ label:'Steady', kind:'work', time:p.sDur*60, kmh:3600/parsePace(p.sPace), inc:+p.sInc }); return st; }
+    if (p.wu > 0) st.push({ label:'Warm-up', kind:'warm', time:p.wu*60, kmh:3600/parsePace(p.wuPace), inc:+p.recInc });
+    for (let i=1; i<=p.reps; i++){
+      st.push({ label:`Rep ${i} of ${p.reps}`, kind:'work', dist:+p.repDist, kmh:3600/parsePace(p.repPace), inc:+p.repInc });
+      if (i < p.reps && p.rec > 0) st.push({ label:`Recovery ${i} of ${p.reps-1}`, kind:'rest', time:+p.rec, kmh:+p.recSpeed, inc:+p.recInc });
+    }
+    if (p.cd > 0) st.push({ label:'Cool-down', kind:'cool', time:p.cd*60, kmh:3600/parsePace(p.cdPace), inc:+p.recInc });
+  } else {
+    const F = ftp();
+    if (p.wu > 0) st.push({ label:'Warm-up', kind:'warm', time:p.wu*60, watts:Math.round(p.wuPct/100*F), pct:+p.wuPct });
+    for (let i=1; i<=p.reps; i++){
+      st.push({ label:`Rep ${i} of ${p.reps}`, kind:'work', time:p.repMin*60, watts:Math.round(p.repPct/100*F), pct:+p.repPct });
+      if (i < p.reps && p.rec > 0) st.push({ label:`Recovery ${i} of ${p.reps-1}`, kind:'rest', time:p.rec*60, watts:Math.round(p.recPct/100*F), pct:+p.recPct });
+    }
+    if (p.cd > 0) st.push({ label:'Cool-down', kind:'cool', time:p.cd*60, watts:Math.round(p.cdPct/100*F), pct:+p.cdPct });
+  }
+  return st;
+}
+const estSecs = s => s.time ?? (s.dist / Math.max(0.5, (s.kmh||10)/3.6));
+const intensity = s => s.pct != null ? s.pct/150 : Math.min(1, (s.kmh||0)/20);
+function describe(wk){
+  const p = wk.params;
+  const total = buildSteps(wk).reduce((a,s)=>a+estSecs(s),0);
+  let d;
+  if (wk.sport==='run') d = p.type==='steady' ? `${p.sDur} min at ${p.sPace}/km` : `${p.reps} × ${p.repDist} m at ${p.repPace}/km · ${p.rec}s at ${p.recSpeed} km/h`;
+  else d = `${p.reps} × ${p.repMin} min at ${p.repPct}% (${Math.round(p.repPct/100*ftp())} W) · ${p.rec} min easy`;
+  return `${d} · about ${Math.round(total/60)} min`;
+}
+function chartSVG(steps){
+  const total = steps.reduce((a,s)=>a+estSecs(s),0) || 1; let x = 0, out = '';
+  for (const s of steps){
+    const w = estSecs(s)/total*100, h = 12 + intensity(s)*88;
+    const col = s.kind==='work' ? '#ffb36b' : s.kind==='rest' ? 'rgba(255,255,255,.28)' : 'rgba(255,179,107,.45)';
+    out += `<rect x="${x}" y="${100-h}" width="${Math.max(0.3,w-0.3)}" height="${h}" fill="${col}" rx="0.6"/>`; x += w;
+  }
+  return `<svg viewBox="0 0 100 100" preserveAspectRatio="none">${out}</svg>`;
+}
+
+const allWorkouts = () => PRESETS.concat(store.get('workouts', []));
+function renderLib(){
+  const list = allWorkouts().filter(w => w.sport === S.sport);
+  $('wkList').innerHTML = `<div class="keys" style="margin-bottom:6px">${S.sport==='run'?'Treadmill':'Bike'} workouts${S.connected?'':'. Switch Ride/Run under “simulate” to see the others'}.</div>` +
+    list.map(w => `<div class="wk-item" data-id="${w.id}">
+      <div><div class="nm">${w.name}</div><div class="ds">${describe(w)}</div></div>
+      <div class="acts"><button data-act="edit">Edit</button>${w.builtin?'':'<button data-act="del">Delete</button>'}<button class="primary" data-act="start" style="width:auto;padding:8px 14px">Start</button></div>
+      ${chartSVG(buildSteps(w))}</div>`).join('');
+}
+$('wkList').onclick = e => {
+  const act = e.target.dataset.act; if (!act) return;
+  const id = e.target.closest('.wk-item').dataset.id, wk = allWorkouts().find(w => w.id === id);
+  if (act==='start') startWorkout(wk);
+  if (act==='edit'){ loadIntoBuilder(wk); setTab('build'); }
+  if (act==='del'){ store.set('workouts', store.get('workouts',[]).filter(w=>w.id!==id)); renderLib(); }
+};
+function setTab(t){
+  [...$('wkTabs').children].forEach(b=>b.classList.toggle('on', b.dataset.tab===t));
+  $('tab-lib').classList.toggle('hidden-el', t!=='lib'); $('tab-build').classList.toggle('hidden-el', t!=='build');
+  if (t==='build') updatePreview(); else renderLib();
+}
+$('wkTabs').onclick = e => e.target.dataset.tab && setTab(e.target.dataset.tab);
+$('openWk').onclick = () => { $('wkModal').classList.remove('hidden-el'); $('b_ftp').value = ftp(); setTab('lib'); };
+$('wkClose').onclick = () => $('wkModal').classList.add('hidden-el');
+
+let runType = 'int';
+$('runTypeSeg').onclick = e => { const t=e.target.dataset.rt; if(!t) return; runType=t;
+  [...$('runTypeSeg').children].forEach(b=>b.classList.toggle('on', b.dataset.rt===t));
+  $('runIntForm').classList.toggle('hidden-el', t!=='int'); $('runSteadyForm').classList.toggle('hidden-el', t!=='steady'); updatePreview(); };
+const RUN_INT = ['wu','wuPace','reps','repDist','repPace','rec','recSpeed','repInc','recInc','cd','cdPace'];
+const RUN_ST = ['sDur','sPace','sInc'];
+const RIDE = ['wu','wuPct','reps','repMin','repPct','rec','recPct','cd','cdPct'];
+const numOrStr = v => (/^-?\d+(\.\d+)?$/.test(v) ? +v : v);
+function readBuilder(){
+  if (S.sport==='run'){
+    const p = { type:runType }; (runType==='int'?RUN_INT:RUN_ST).forEach(k => p[k] = numOrStr($('b_'+k).value));
+    return { sport:'run', params:p, name: $('wkName').value.trim() || (runType==='int' ? `${p.reps} × ${p.repDist} m` : `Steady ${p.sDur} min`) };
+  }
+  const p = {}; RIDE.forEach(k => p[k] = +$('r_'+k).value);
+  return { sport:'ride', params:p, name: $('wkName').value.trim() || `${p.reps} × ${p.repMin} min` };
+}
+function loadIntoBuilder(wk){
+  $('wkName').value = wk.builtin ? '' : wk.name;
+  if (wk.sport==='run'){
+    runType = wk.params.type || 'int';
+    $('runTypeSeg').querySelector(`[data-rt="${runType}"]`).click();
+    Object.entries(wk.params).forEach(([k,v]) => { const el=$('b_'+k); if (el) el.value=v; });
+  } else Object.entries(wk.params).forEach(([k,v]) => { const el=$('r_'+k); if (el) el.value=v; });
+}
+function validRun(wk){ return buildSteps(wk).every(s => isFinite(s.kmh) && s.kmh >= 0); }
+function updatePreview(){
+  const wk = readBuilder();
+  if (wk.sport==='run' && !validRun(wk)){ $('wkPreview').innerHTML=''; $('wkSummary').textContent='Paces need to look like 4:15'; return; }
+  $('wkPreview').innerHTML = chartSVG(buildSteps(wk)).replace(/^<svg[^>]*>|<\/svg>$/g,'');
+  $('wkPreview').setAttribute('viewBox','0 0 100 100');
+  $('wkSummary').textContent = describe(wk);
+}
+$('tab-build').addEventListener('input', e => { if (e.target.id==='b_ftp') store.set('ftp', Math.max(80, +e.target.value||200)); updatePreview(); });
+$('wkSave').onclick = () => {
+  const wk = readBuilder(); if (wk.sport==='run' && !validRun(wk)) return;
+  const list = store.get('workouts', []); wk.id = 'u-'+Date.now(); list.push(wk); store.set('workouts', list);
+  log(`Saved “${wk.name}”`); setTab('lib');
+};
+$('wkStartNew').onclick = () => { const wk = readBuilder(); if (wk.sport==='run' && !validRun(wk)) return; startWorkout(wk); };
+
+/* =========================================================
+   WORKOUT PLAYER
+   ========================================================= */
+const W = { active:false, steps:[], i:0, time:0, t0:0, d0:0, paused:false, autoPaused:false, pendingSpeed:null, lastCount:null, layout:null, lastName:null };
+let actx = null;
+function beep(freq=880, dur=0.12){
+  try{
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+    o.frequency.value = freq; o.connect(g); g.connect(actx.destination);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.3, t+0.01); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    o.start(t); o.stop(t+dur+0.02);
+  }catch{}
+}
+function startWorkout(wk){
+  if (wk.sport !== S.sport){
+    if (S.connected){ log(`That's a ${wk.sport==='run'?'treadmill':'bike'} workout, but a ${S.sport==='run'?'treadmill':'bike'} is connected`); return; }
+    setSport(wk.sport);
+  }
+  try{ actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); }catch{}
+  W.steps = buildSteps(wk); if (!W.steps.length) return;
+  S.frozen = false;
+  W.prevMode = S.mode; W.lastRepShot = false; W.active = true; W.paused = false; W.time = 0; W.lastName = wk.name;
+  const total = W.steps.reduce((a,s)=>a+estSecs(s),0); let acc = 0;
+  W.layout = W.steps.map(s => { const r = { a:acc/total, b:(acc+estSecs(s))/total, s }; acc += estSecs(s); return r; });
+  $('wkModal').classList.add('hidden-el'); $('wkHud').classList.remove('hidden-el');
+  log(`Workout: ${wk.name}`);
+  enterStep(0);
+}
+function setRideMode(m){
+  S.mode = m; [...$('modeSeg').children].forEach(b=>b.classList.toggle('on', b.dataset.mode===m));
+  for (const k of ['sim','erg','manual']) $('ctl-'+k).classList.toggle('hidden-el', k!==m);
+  trainer.lastSent = {};
+}
+function enterStep(i){
+  if (i >= W.steps.length) return finishWorkout(true);
+  W.i = i; W.t0 = W.time; W.d0 = S.dist; W.lastCount = null;
+  if (track.length) lapStarts.push(track.length);
+  const st = W.steps[i];
+  if (S.sport==='run'){
+    S.wkIncline = st.inc; trainer.lastSent = {};
+    if (S.connected){ if (S.beltSpeed > 0.3) trainer.setSpeed(st.kmh); else { W.pendingSpeed = st.kmh; log('Start the belt and the workout will set the speed'); } }
+    else if (S.simulate){ S.simSpeed = +st.kmh.toFixed(1); $('simSpeed').value = S.simSpeed; $('simSpeedOut').textContent = `${S.simSpeed.toFixed(1)} km/h`; }
+  } else {
+    setRideMode('erg'); S.erg = st.watts; $('erg').value = st.watts; $('ergOut').textContent = `${st.watts} W`;
+    if (S.simulate && !S.connected){ S.simPower = st.watts; $('simPower').value = st.watts; $('simPowerOut').textContent = `${st.watts} W`; }
+  }
+  if (i > 0) beep(1320, 0.25);
+}
+function finishWorkout(completed, silent){
+  if (!W.active) return;
+  W.active = false; S.wkIncline = null; W.pendingSpeed = null;
+  $('wkHud').classList.add('hidden-el'); $('wkCount').style.opacity = 0;
+  if (S.sport==='ride') setRideMode(W.prevMode && W.prevMode!=='erg' ? W.prevMode : 'sim');
+  trainer.lastSent = {};
+  if (!silent) log(completed ? 'Workout complete' : 'Workout ended');
+  if (completed && !silent){ beep(660,0.15); setTimeout(()=>beep(990,0.3),180); openDone(); }
+}
+function stepTargetText(st){
+  if (!st) return '';
+  if (st.watts != null) return `${st.watts} W · ${st.pct}%`;
+  const pace = st.kmh > 0 ? `${fmtPace(3600/st.kmh)}/km` : 'stop';
+  return st.kind==='rest' ? `${st.kmh.toFixed(1)} km/h walk · ${st.inc}%` : `${pace} · ${st.inc}%`;
+}
+function stepRemaining(){
+  const st = W.steps[W.i];
+  if (st.time != null){ const r = st.time - (W.time - W.t0); return { secs:r, text:fmtMS(r) }; }
+  const m = st.dist - (S.dist - W.d0); return { secs: S.v>0.3 ? m/S.v : Infinity, text: `${Math.max(0,Math.ceil(m))} m`, m };
+}
+function updateWorkout(dt){
+  if (!W.active || S.frozen) return;
+  const st = W.steps[W.i];
+  if (S.sport==='run' && S.connected){
+    const stopped = !(S.beltSpeed > 0.3);
+    if (stopped && !W.autoPaused){ W.autoPaused = true; W.pendingSpeed = st.kmh; log('Belt stopped, so the workout is paused'); }
+    if (!stopped && W.autoPaused) W.autoPaused = false;
+    if (W.pendingSpeed && S.beltSpeed > 0.3 && !trainer.busy){ trainer.setSpeed(W.pendingSpeed); W.pendingSpeed = null; }
+    // if the treadmill ignored the change (some do while still ramping up), send it again
+    const sc = trainer.speedCheck;
+    if (sc && !stopped && performance.now() - sc.t > 5000){
+      if (Math.abs((S.beltSpeed||0) - sc.kmh) > 0.6 && sc.tries < 3 && !trainer.busy){ log('Speed didn’t take, resending'); trainer.setSpeed(sc.kmh); }
+      else trainer.speedCheck = null;
+    }
+  }
+  if (W.paused || W.autoPaused) return;
+  W.time += dt;
+  const r = stepRemaining(), next = W.steps[W.i+1];
+  if (next && r.secs <= 3.05 && r.secs > 0){
+    const n = Math.ceil(r.secs);
+    if (n !== W.lastCount){ W.lastCount = n; beep(880, 0.1); }
+  }
+  if (st.time != null ? r.secs <= 0 : r.m <= 0) enterStep(W.i+1);
+}
+function updateWorkoutHud(){
+  if (!W.active) return;
+  const st = W.steps[W.i], next = W.steps[W.i+1], r = stepRemaining();
+  $('wkStep').textContent = st.label + (W.paused ? ' · paused' : W.autoPaused ? ' · waiting for belt' : '');
+  $('wkLeft').textContent = r.text;
+  $('wkTarget').textContent = stepTargetText(st);
+  $('wkNext').textContent = next ? `Next: ${next.label.replace(/ of \d+$/,'')} · ${next.time!=null ? fmtMS(next.time) : next.dist+' m'} · ${stepTargetText(next)}` : 'Last block';
+  $('wkPause').textContent = W.paused ? 'Resume' : 'Pause';
+  const showCount = next && r.secs <= 3.05 && r.secs > 0 && !W.paused && !W.autoPaused;
+  $('wkCount').style.opacity = showCount ? 1 : 0;
+  if (showCount) $('wkCount').innerHTML = `${Math.ceil(r.secs)}<small>${next.label.replace(/ of \d+$/,'')} · ${stepTargetText(next)}</small>`;
+}
+$('wkPause').onclick = () => { W.paused = !W.paused; };
+$('wkSkip').onclick = () => enterStep(W.i+1);
+$('wkEnd').onclick = () => finishWorkout(false);
+function drawWorkoutStrip(){
+  const w = prof.width, h = prof.height, r = Math.min(devicePixelRatio,2);
+  pctx.clearRect(0,0,w,h);
+  for (const L of W.layout){
+    const bh = (8 + intensity(L.s)*(h/r-20))*r;
+    pctx.fillStyle = L.s.kind==='work' ? 'rgba(255,179,107,.75)' : L.s.kind==='rest' ? 'rgba(255,255,255,.25)' : 'rgba(255,179,107,.38)';
+    pctx.fillRect(L.a*w + r, h - 6*r - bh, Math.max(1,(L.b-L.a)*w - 2*r), bh);
+  }
+  const cur = W.layout[W.i], st = cur.s, rr = stepRemaining();
+  const frac = st.time != null ? Math.min(1, (W.time-W.t0)/st.time) : Math.min(1, (S.dist-W.d0)/st.dist);
+  const x = (cur.a + (cur.b-cur.a)*frac) * w;
+  pctx.fillStyle = 'rgba(255,255,255,.9)'; pctx.fillRect(x-r, 4*r, 2*r, h-8*r);
+}
+
+/* =========================================================
+   SNAPSHOTS — manual (button / P) and automatic key moments
+   ========================================================= */
+const shots = []; let pendingShot = null;
+function requestShot(reason){ if (!pendingShot) pendingShot = reason; }
+$('snap').onclick = () => requestShot('manual');
+function takeShot(reason){
+  const src = renderer.domElement, scale = Math.min(1, 1920/src.width);
+  const c = document.createElement('canvas'); c.width = Math.round(src.width*scale); c.height = Math.round(src.height*scale);
+  const x = c.getContext('2d'); x.drawImage(src, 0, 0, c.width, c.height);
+  // stats overlay
+  const u = c.width/1600, g = x.createLinearGradient(0, c.height*0.72, 0, c.height);
+  g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,'rgba(0,0,0,.55)'); x.fillStyle = g; x.fillRect(0, c.height*0.7, c.width, c.height*0.3);
+  const run = S.sport==='run', items = [];
+  if (run){ const sp = S.v>0.4 ? Math.round(1000/S.v) : null; items.push([sp?`${Math.floor(sp/60)}:${String(sp%60).padStart(2,'0')}`:'–', '/km']); }
+  else items.push([String(Math.round(S.curPower||0)), 'W']);
+  if (S.hr) items.push([String(S.hr), 'bpm']);
+  items.push([(S.dist/1000).toFixed(2), 'km']); items.push([fmtTime(S.elapsed), '']);
+  let px = 48*u; const py = c.height - 52*u;
+  for (const [v, unit] of items){
+    x.font = `600 ${64*u}px "JetBrains Mono", monospace`; x.fillStyle = '#fff'; x.fillText(v, px, py); px += x.measureText(v).width + 8*u;
+    x.font = `400 ${24*u}px "Inter Tight", sans-serif`; x.fillStyle = 'rgba(255,255,255,.7)'; x.fillText(unit, px, py); px += x.measureText(unit).width + 40*u;
+  }
+  x.font = `500 ${22*u}px "Inter Tight", sans-serif`; x.fillStyle = 'rgba(255,255,255,.75)'; x.textAlign = 'right';
+  x.fillText('Kicks Ride', c.width - 40*u, py);
+  c.toBlob(b => { if (!b) return;
+    shots.push({ blob:b, url:URL.createObjectURL(b), reason, t:Date.now(), sel:reason==='manual' });
+    while (shots.length > 6){ let i = shots.findIndex(q=>q.reason==='auto'); if (i<0) i = 0; URL.revokeObjectURL(shots[i].url); shots.splice(i,1); }
+  }, 'image/jpeg', 0.9);
+  const f = $('flash'); f.style.transition = 'none'; f.style.opacity = reason==='manual' ? 0.7 : 0;
+  requestAnimationFrame(() => { f.style.transition = 'opacity .35s'; f.style.opacity = 0; });
+  if (reason==='manual') log('Snapshot');
+}
+// automatic: up to 3 at random moments while moving (never tied to climbs or hard reps)
+let nextAuto = 240 + Math.random()*600;
+function autoShots(){
+  if (!$('autoSnap').checked || S.frozen || !(S.connected || S.simulate) || S.v < 0.5) return;
+  if (shots.filter(s=>s.reason==='auto').length >= 3) return;
+  if (S.elapsed >= nextAuto){ nextAuto = S.elapsed + 300 + Math.random()*900; requestShot('auto'); }
+}
+function renderShots(){
+  $('shotsWrap').classList.toggle('hidden-el', !shots.length);
+  $('shots').innerHTML = shots.map((s,i)=>`<img src="${s.url}" data-i="${i}" class="${s.sel?'sel':''}" title="${s.reason}">`).join('');
+}
+$('shots').onclick = e => { const i = e.target.dataset.i; if (i==null) return; shots[i].sel = !shots[i].sel; renderShots(); };
+$('saveShots').onclick = async () => {
+  const pick = shots.filter(s=>s.sel); if (!pick.length) return;
+  const files = pick.map((s,i)=>new File([s.blob], `kicks-ride-${new Date(s.t).toISOString().slice(0,19).replace(/[:T]/g,'-')}-${i+1}.jpg`, {type:'image/jpeg'}));
+  if (isIOS && navigator.canShare && navigator.canShare({ files })){ try{ await navigator.share({ files }); return; }catch(e){ if (e && e.name==='AbortError') return; } }
+  for (const f of files){ const a=document.createElement('a'); a.href=URL.createObjectURL(f); a.download=f.name; document.body.appendChild(a); a.click(); a.remove(); await new Promise(r=>setTimeout(r,250)); }
+};
+
+/* =========================================================
+   LOOP
+   ========================================================= */
+const clock = new THREE.Clock();
+const camLook = new THREE.Vector3(), tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3();
+let tickAcc = 0, uiAcc = 0, crank = 0, bob = 0, simCad = 0;
+const LANE = 1.5;
+const fmtTime = s => { s=Math.floor(s); const h=Math.floor(s/3600), m=Math.floor(s/60)%60, ss=s%60; return h?`${h}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`:`${m}:${String(ss).padStart(2,'0')}`; };
+
+function frame(){
+  const dt = Math.min(clock.getDelta(), 0.1);
+
+  const grade = gradeAt(S.dist);
+  let power = 0;
+  if (S.sport==='run'){
+    // the belt is the truth: you move at whatever speed the treadmill is running
+    const kmh = S.connected ? (S.beltSpeed||0) : S.simulate ? S.simSpeed : 0;
+    S.v += (kmh/3.6 - S.v)*Math.min(1, dt*3);
+    if (S.v < 0.02 && kmh===0) S.v = 0;
+    S.dist += S.v*dt;
+    if (S.footCad) S.cadence = S.footCad;
+    else if (S.simulate && !S.connected){ simCad += ((kmh>0 ? 150 + kmh*2.2 : 0) - simCad)*dt*2; S.cadence = simCad; }
+    else S.cadence = 0;
+  } else {
+    if (S.connected) power = S.power;
+    else if (S.simulate){
+      power = S.simPower;
+      simCad += ((power>0 ? 82 + power*0.03 : 0) - simCad)*dt*2;
+      S.cadence = simCad;
+    } else { S.power = 0; S.cadence = 0; }
+    stepPhysics(dt, power, grade);
+  }
+  S.curPower = power;
+  if (!S.frozen && (S.v > 0.3 || power > 0)) S.elapsed += dt;
+  if (S.sport==='run' && !S.frozen){ const inc = S.beltIncline ?? (S.wkIncline ?? (S.runMode==='fixed'?S.incFixed:Math.max(0,grade*S.incScale))); S.runAlt += S.v*dt*inc/100; }
+  updateWorkout(dt);
+
+  // send to trainer ~1 Hz
+  tickAcc += dt;
+  if (tickAcc > 1){ tickAcc = 0; logSample(power, grade); recordPoint(power);
+    trainer.tick(grade);
+  }
+
+  // position on course
+  const u = wrap(S.dist)/L;
+  const p = curve.getPointAt(u), t = curve.getTangentAt(u);
+  const side = tmpA.set(-t.z,0,t.x).normalize();
+  const base = p.clone().addScaledVector(side, LANE);
+  const ahead = curve.getPointAt(wrap(S.dist+22)/L).addScaledVector(side, LANE);
+
+  bike.position.copy(base);
+  bike.lookAt(tmpB.copy(base).add(t));
+  wheels.forEach(w => w.rotation.x += S.v*dt/0.34);
+  crank += (S.cadence/60)*Math.PI*2*dt;
+  bike.userData.legs.forEach((l,i)=>{ l.position.y = 0.75 + Math.sin(crank + i*Math.PI)*0.06; });
+
+  runner.position.copy(base); runner.lookAt(tmpB.copy(base).add(tmpA.set(t.x,0,t.z)));
+  side.set(-t.z,0,t.x).normalize();
+  { const spm = S.cadence || (S.v>0.5 ? 165 : 0);
+    stride += dt*(spm/60)*Math.PI;   // one full cycle = two steps
+    const sw = Math.min(1, S.v/2.5);
+    runner.userData.legs.forEach((g,i)=>{ g.rotation.x = Math.sin(stride + i*Math.PI)*0.7*sw; });
+    runner.userData.arms.forEach((g,i)=>{ g.rotation.x = -Math.sin(stride + i*Math.PI)*0.6*sw; });
+    runner.position.y += Math.abs(Math.sin(stride))*0.05*sw; }
+
+  bob += dt*(S.cadence/60)*Math.PI*2;
+  const isRun = S.sport==='run';
+  if (S.view==='fp'){
+    bike.visible = false; runner.visible = false;
+    if (isRun){ camera.position.copy(base).add(tmpB.set(0, 1.7 + Math.abs(Math.sin(stride))*0.03*Math.min(1,S.v/2.5), 0)); ahead.y += 1.4; }
+    else {
+    camera.position.copy(base).add(tmpB.set(0, 1.55 + Math.sin(bob*2)*0.006*Math.min(1,S.v/4), 0));
+    ahead.y += 1.25; }
+  } else {
+    bike.visible = !isRun; runner.visible = isRun;
+    const back = curve.getPointAt(wrap(S.dist-6.5)/L).addScaledVector(side, LANE);
+    camera.position.copy(back).add(tmpB.set(0,2.5,0));
+    ahead.copy(base).add(tmpB.set(0,1.1,0)).addScaledVector(t, 4);
+  }
+  camLook.lerp(ahead, camLook.lengthSq()===0 ? 1 : Math.min(1, dt*4));
+  camera.lookAt(camLook);
+
+  sun.position.copy(base).add(SUN_OFFSET); sun.target.position.copy(base);
+  scene.userData.sky.position.copy(camera.position);
+
+  // HUD (throttled)
+  uiAcc += dt;
+  if (uiAcc > 0.15){ uiAcc = 0;
+    $('mPower').innerHTML = `${Math.round(power)}<small>W</small>`;
+    const cu = S.sport==='run' ? 'spm' : 'rpm';
+    $('mCad').innerHTML   = S.cadence>0 || S.sport!=='run' ? `${Math.round(S.cadence)}<small>${cu}</small>` : `–<small>${cu}</small>`;
+    if (S.sport==='run'){
+      const secPerKm = S.v>0.4 ? Math.round(1000/S.v) : null;
+      $('mPace').innerHTML = (secPerKm ? `${Math.floor(secPerKm/60)}:${String(secPerKm%60).padStart(2,'0')}` : '–:––') + '<small>/km</small>';
+    }
+    $('mSpeed').innerHTML = `${(S.v*3.6).toFixed(1)}<small>km/h</small>`;
+    $('mDist').innerHTML  = `${(S.dist/1000).toFixed(2)}<small>km</small>`;
+    $('mTime').textContent = fmtTime(S.elapsed);
+    $('mLap').textContent  = Math.floor(S.dist/L)+1;
+    $('gSub').textContent = '';
+    if (S.sport==='run'){
+      const want = S.wkIncline!=null ? S.wkIncline : S.runMode==='fixed' ? S.incFixed : Math.max(0, grade*S.incScale);
+      $('gLabel').textContent = S.runMode==='fixed' ? 'Fixed incline' : 'Incline';
+      $('mGrade').textContent = `${want.toFixed(1)}%`;
+      $('mGrade').style.color = want>6?'#ff8a6b':want>3?'#ffc27a':'';
+      if (S.beltIncline!=null && S.connected) $('gSub').textContent = `treadmill at ${S.beltIncline.toFixed(1)}%`;
+    }
+    else if (S.mode==='erg'){ $('gLabel').textContent='ERG target'; $('mGrade').textContent=`${S.erg} W`; }
+    else {
+      const shown = S.mode==='manual' ? S.manualGrade : grade;
+      $('gLabel').textContent = S.mode==='manual' ? 'Fixed grade' : 'Gradient';
+      $('mGrade').textContent = `${shown>=0?'':'−'}${Math.abs(shown).toFixed(1)}%`;
+      $('mGrade').style.color = shown>6?'#ff8a6b':shown>3?'#ffc27a':'';
+    }
+    if (S.bikeSpeed!=null && S.connected && S.sport==='ride'){ $('bikeSpd').classList.remove('hidden-el'); $('bikeSpd').textContent = `KICKR says ${S.bikeSpeed.toFixed(1)}`; }
+    if (S.hr){ $('tHr').classList.remove('hidden-el'); $('mHr').innerHTML = `${S.hr}<small>bpm</small>`; }
+    $('banner').style.opacity = (S.connected || S.simulate) ? 0 : 1;
+    updateWorkoutHud(); autoShots();
+  }
+  W.active ? drawWorkoutStrip() : drawProfile();
+  updateLamps(); composer.setSize(innerWidth, innerHeight); composer.render();
+  if (pendingShot){ takeShot(pendingShot); pendingShot = null; }
+  requestAnimationFrame(frame);
+}
+frame();
+window.__snap = () => camLook.set(0,0,0); window.__ride = S; window.__trainer = trainer; window.__W = W; window.__tcx = () => buildTCX(); window.__track = () => track; // handy for debugging in the console
+</script>
+</body>
+</html>
