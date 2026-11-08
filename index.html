@@ -20,7 +20,8 @@
 
   /* HUD */
   #hud{position:fixed;inset:0;pointer-events:none}
-  .metrics{position:absolute;top:28px;left:32px;display:flex;gap:10px}
+  .metrics{position:absolute;top:28px;left:32px;right:32px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start}
+  .metrics .spacer{flex:1 1 0;min-width:10px}
   .tile{background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
     border:1px solid var(--line);border-radius:14px;padding:12px 18px 10px;min-width:118px}
   .tile .k{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
@@ -28,8 +29,11 @@
   .tile .v small{font-size:14px;font-weight:400;color:var(--dim);margin-left:4px}
   .tile.power{min-width:150px}
   .tile.power .v{font-size:56px}
+  .tile.minor .v{font-size:26px}.tile.minor{min-width:90px;opacity:.85}
+  #hud .metrics .tile, #hud .grade, #wkHud{zoom:var(--hud,1)}
+  body.run #mDist{font-size:52px}
   .right{position:absolute;top:28px;right:32px;display:flex;gap:10px}
-  .grade{position:absolute;right:32px;bottom:118px;text-align:right}
+  .grade{position:absolute;right:32px;bottom:164px;text-align:right}
   .grade .v{font-family:"JetBrains Mono",monospace;font-size:64px;font-weight:600;line-height:1}
   .grade .k{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-bottom:6px}
   #profile{position:absolute;left:32px;right:32px;bottom:26px;height:76px;width:calc(100% - 64px);
@@ -65,7 +69,7 @@
     max-height:170px;overflow:auto;white-space:pre-wrap}
   .keys{color:var(--dim);line-height:1.7}
   kbd{font-family:"JetBrains Mono",monospace;font-size:11px;border:1px solid var(--line);border-radius:4px;padding:0 5px}
-  #panelTab{position:fixed;right:32px;top:126px;z-index:4;display:none}
+  #panelTab{position:fixed;right:32px;bottom:112px;z-index:4;display:none}
   .hidden-el{display:none!important}
   body.run .ride-only{display:none!important}
   body:not(.run) .run-only{display:none!important}
@@ -116,14 +120,13 @@
   <div class="metrics">
     <div class="tile power ride-only"><div class="k">Power</div><div class="v" id="mPower">0<small>W</small></div></div>
     <div class="tile power run-only"><div class="k">Pace</div><div class="v" id="mPace">–:––<small>/km</small></div></div>
-    <div class="tile"><div class="k">Cadence</div><div class="v" id="mCad">0<small>rpm</small></div></div>
-    <div class="tile"><div class="k">Speed</div><div class="v" id="mSpeed">0.0<small>km/h</small></div><div class="k hidden-el" id="bikeSpd" style="margin-top:4px;text-transform:none;letter-spacing:.02em">KICKR says –</div></div>
-    <div class="tile hidden-el" id="tHr"><div class="k">Heart</div><div class="v" id="mHr">–<small>bpm</small></div></div>
-  </div>
-  <div class="right">
+    <div class="tile ride-only"><div class="k">Avg power</div><div class="v" id="mAvgP">0<small>W</small></div></div>
+    <div class="tile ride-only"><div class="k">Speed</div><div class="v" id="mSpeed">0.0<small>km/h</small></div><div class="k hidden-el" id="bikeSpd" style="margin-top:4px;text-transform:none;letter-spacing:.02em">KICKR says –</div></div>
+    <div class="tile" id="tHr"><div class="k">Heart</div><div class="v" id="mHr">–<small>bpm</small></div></div>
+    <div class="tile minor"><div class="k">Cadence</div><div class="v" id="mCad">0<small>rpm</small></div></div>
+    <div class="spacer"></div>
     <div class="tile"><div class="k">Distance</div><div class="v" id="mDist">0.00<small>km</small></div></div>
-    <div class="tile"><div class="k">Time</div><div class="v" id="mTime">0:00</div></div>
-    <div class="tile"><div class="k">Lap</div><div class="v" id="mLap">1</div></div>
+    <div class="tile"><div class="k">Time · lap <span id="mLap">1</span></div><div class="v" id="mTime">0:00</div></div>
   </div>
   <div class="grade"><div class="k" id="gLabel">Gradient</div><div class="v" id="mGrade">0.0%</div><div id="gSub"></div></div>
   <canvas id="profile"></canvas>
@@ -204,12 +207,14 @@
     <div class="seg" id="runModeSeg">
       <button data-rmode="course" class="on">Follow course</button>
       <button data-rmode="fixed">Fixed</button>
+      <button data-rmode="off">Off (flat)</button>
     </div>
     <div id="ctl-rcourse" style="margin-top:12px">
       <div class="row"><label>Course incline</label><output id="incScaleOut">100%</output></div>
       <input type="range" id="incScale" min="0" max="100" step="5" value="100">
       <div class="keys" style="margin-top:6px">Downhills flatten to the treadmill's lowest incline. Changes are sent at most every 4 s so the motor isn't constantly hunting.</div>
     </div>
+    <div id="ctl-roff" class="hidden-el keys" style="margin-top:12px">The app never touches the incline, workouts included. Set it on the treadmill if you want any.</div>
     <div id="ctl-rfixed" class="hidden-el" style="margin-top:12px">
       <div class="row"><label>Incline</label><output id="incFixedOut">1.0%</output></div>
       <input type="range" id="incFixed" min="0" max="15" step="0.5" value="1">
@@ -228,6 +233,8 @@
       <button data-view="fp" class="on">First person</button>
       <button data-view="chase">Chase</button>
     </div>
+    <div class="row" style="margin-top:10px"><label>HUD text size</label></div>
+    <div class="seg" id="hudSeg"><button data-z="1" class="on">Normal</button><button data-z="1.3">Large</button><button data-z="1.6">Extra large</button></div>
     <div class="row" style="margin-top:10px">
       <button id="fs" style="flex:1">Fullscreen</button>
       <button id="reset" style="flex:1">Reset ride</button>
@@ -500,6 +507,7 @@ class Trainer {
     if (!S.connected || this.busy || !this.cp) return;
     const now = performance.now();
     if (this.kind === 'treadmill'){
+      if (S.runMode === 'off') return;
       const step = this.incStep || 0.5;
       let want = S.wkIncline!=null ? S.wkIncline : S.runMode==='fixed' ? S.incFixed : roadGrade*S.incScale;
       want = Math.min(this.incMax ?? 15, Math.max(this.incMin ?? 0, want));
@@ -925,10 +933,12 @@ $('incFixed').oninput = e => { S.incFixed=+e.target.value; $('incFixedOut').text
 $('runModeSeg').onclick = e => {
   const m = e.target.dataset.rmode; if (!m) return; S.runMode = m;
   [...$('runModeSeg').children].forEach(b=>b.classList.toggle('on', b.dataset.rmode===m));
-  $('ctl-rcourse').classList.toggle('hidden-el', m!=='course'); $('ctl-rfixed').classList.toggle('hidden-el', m!=='fixed');
+  $('ctl-rcourse').classList.toggle('hidden-el', m!=='course'); $('ctl-rfixed').classList.toggle('hidden-el', m!=='fixed'); $('ctl-roff').classList.toggle('hidden-el', m!=='off');
+  try{ localStorage.setItem('kr.runMode', m); }catch{}
   trainer.lastSent = {};
 };
 $('setSpeed').onclick = () => trainer.setSpeed(+$('tgtSpeed').value);
+try{ const m = localStorage.getItem('kr.runMode'); if (m && m!=='course') $('runModeSeg').querySelector(`[data-rmode="${m}"]`)?.click(); }catch{}
 $('simToggle').onchange = e => setSimulate(e.target.checked);
 $('simPower').oninput = e => { S.simPower=+e.target.value; $('simPowerOut').textContent=`${S.simPower} W`; };
 $('diff').oninput = e => { S.difficulty=e.target.value/100; $('diffOut').textContent=`${e.target.value}%`; };
@@ -976,6 +986,9 @@ $('dl').onclick = () => {
   a.download = `${S.sport}-${new Date().toISOString().slice(0,16).replace(/[:T]/g,'-')}.csv`; a.click();
   log(`Saved ${samples.length} s of data`);
 };
+function setHudZoom(z){ document.documentElement.style.setProperty('--hud', z); [...$('hudSeg').children].forEach(b=>b.classList.toggle('on', +b.dataset.z===+z)); try{ localStorage.setItem('kr.hud', z); }catch{} }
+$('hudSeg').onclick = e => e.target.dataset.z && setHudZoom(e.target.dataset.z);
+try{ setHudZoom(localStorage.getItem('kr.hud') || 1); }catch{}
 const togglePanel = () => { const hidden=$('panel').classList.toggle('hidden'); $('panelTab').style.display = hidden?'block':'none'; };
 $('panelTab').onclick = togglePanel;
 $('hidePanel').onclick = togglePanel;
@@ -1030,7 +1043,7 @@ function recordPoint(power){
 }
 function resetSession(){
   if (W.active) finishWorkout(false, true);
-  S.dist=0; S.v=0; S.elapsed=0; S.runAlt=0; samples.length=0; track=[]; lapStarts=[0]; S.frozen=false;
+  S.dist=0; S.v=0; S.elapsed=0; S.runAlt=0; S.pSum=0; S.pTime=0; samples.length=0; track=[]; lapStarts=[0]; S.frozen=false;
   shots.forEach(s=>URL.revokeObjectURL(s.url)); shots.length=0; nextAuto = 240 + Math.random()*600;
   log('New session');
 }
@@ -1504,6 +1517,7 @@ function frame(){
     stepPhysics(dt, power, grade);
   }
   S.curPower = power;
+  if (!S.frozen && S.sport==='ride' && (S.v > 0.3 || power > 0)){ S.pSum = (S.pSum||0) + power*dt; S.pTime = (S.pTime||0) + dt; }
   if (!S.frozen && (S.v > 0.3 || power > 0)) S.elapsed += dt;
   if (S.sport==='run' && !S.frozen){ const inc = S.beltIncline ?? (S.wkIncline ?? (S.runMode==='fixed'?S.incFixed:Math.max(0,grade*S.incScale))); S.runAlt += S.v*dt*inc/100; }
   updateWorkout(dt);
@@ -1560,6 +1574,8 @@ function frame(){
   uiAcc += dt;
   if (uiAcc > 0.15){ uiAcc = 0;
     $('mPower').innerHTML = `${Math.round(power)}<small>W</small>`;
+    $('mAvgP').innerHTML = `${S.pTime ? Math.round(S.pSum/S.pTime) : 0}<small>W</small>`;
+    if (!S.hr) $('mHr').innerHTML = '–<small>bpm</small>';
     const cu = S.sport==='run' ? 'spm' : 'rpm';
     $('mCad').innerHTML   = S.cadence>0 || S.sport!=='run' ? `${Math.round(S.cadence)}<small>${cu}</small>` : `–<small>${cu}</small>`;
     if (S.sport==='run'){
@@ -1573,8 +1589,8 @@ function frame(){
     $('gSub').textContent = '';
     if (S.sport==='run'){
       const want = S.wkIncline!=null ? S.wkIncline : S.runMode==='fixed' ? S.incFixed : Math.max(0, grade*S.incScale);
-      $('gLabel').textContent = S.runMode==='fixed' ? 'Fixed incline' : 'Incline';
-      $('mGrade').textContent = `${want.toFixed(1)}%`;
+      $('gLabel').textContent = S.runMode==='off' ? 'Incline control' : S.runMode==='fixed' ? 'Fixed incline' : 'Incline';
+      $('mGrade').textContent = S.runMode==='off' ? 'Off' : `${want.toFixed(1)}%`;
       $('mGrade').style.color = want>6?'#ff8a6b':want>3?'#ffc27a':'';
       if (S.beltIncline!=null && S.connected) $('gSub').textContent = `treadmill at ${S.beltIncline.toFixed(1)}%`;
     }
