@@ -81,7 +81,7 @@
   <div class="metrics">
     <div class="tile power"><div class="k">Power</div><div class="v" id="mPower">0<small>W</small></div></div>
     <div class="tile"><div class="k">Cadence</div><div class="v" id="mCad">0<small>rpm</small></div></div>
-    <div class="tile"><div class="k">Speed</div><div class="v" id="mSpeed">0.0<small>km/h</small></div></div>
+    <div class="tile"><div class="k">Speed</div><div class="v" id="mSpeed">0.0<small>km/h</small></div><div class="k hidden-el" id="bikeSpd" style="margin-top:4px;text-transform:none;letter-spacing:.02em">KICKR says –</div></div>
     <div class="tile hidden-el" id="tHr"><div class="k">Heart</div><div class="v" id="mHr">–<small>bpm</small></div></div>
   </div>
   <div class="right">
@@ -148,6 +148,7 @@
       <button id="fs" style="flex:1">Fullscreen</button>
       <button id="reset" style="flex:1">Reset ride</button>
     </div>
+    <button id="dl" style="width:100%;margin:2px 0 10px">Download ride data (CSV)</button>
     <div class="keys"><kbd>V</kbd> view · <kbd>F</kbd> fullscreen · <kbd>H</kbd> hide panel · <kbd>↑</kbd><kbd>↓</kbd> sim power</div>
   </section>
 
@@ -165,7 +166,7 @@ import * as THREE from 'three';
    ========================================================= */
 const S = {
   connected:false, simulate:false, simPower:180,
-  power:0, cadence:0, hr:null,
+  power:0, cadence:0, hr:null, bikeSpeed:null,
   v:0, dist:0, elapsed:0,
   mode:'sim', difficulty:1, erg:150, manualGrade:0,
   mass:83, cda:0.32, crr:0.004,
@@ -272,7 +273,7 @@ class Trainer {
   /* Indoor Bike Data 0x2AD2 */
   onData(dv){
     let o = 0; const f = dv.getUint16(o,true); o += 2;
-    if (!(f & 0x0001)) { o += 2; }                         // instantaneous speed (we simulate our own)
+    if (!(f & 0x0001)) { S.bikeSpeed = dv.getUint16(o,true)/100; o += 2; }   // KICKR's own speed, km/h
     if (f & 0x0002) o += 2;                                // avg speed
     if (f & 0x0004) { S.cadence = dv.getUint16(o,true)/2; o += 2; }
     if (f & 0x0008) o += 2;                                // avg cadence
@@ -630,7 +631,23 @@ function toggleFS(){
   }catch(e){ log('Fullscreen blocked: '+e.message); }
 }
 $('fs').onclick = toggleFS;
-$('reset').onclick = () => { S.dist=0; S.v=0; S.elapsed=0; };
+$('reset').onclick = () => { S.dist=0; S.v=0; S.elapsed=0; samples.length=0; };
+// 1 Hz ride log for calibration: our model vs the KICKR's own speed
+const samples = [];
+function logSample(power, grade){
+  if (!(S.connected || S.simulate)) return;
+  samples.push([new Date().toISOString(), S.elapsed.toFixed(1), Math.round(power), Math.round(S.cadence),
+    (S.v*3.6).toFixed(2), S.bikeSpeed!=null ? S.bikeSpeed.toFixed(2) : '', grade.toFixed(2),
+    S.mode==='manual'?S.manualGrade:(S.mode==='erg'?'':(grade*S.difficulty).toFixed(2)), S.mode, S.mass, (S.dist).toFixed(1), S.hr??'']);
+}
+$('dl').onclick = () => {
+  if (!samples.length){ log('Nothing recorded yet'); return; }
+  const head = 'time,elapsed_s,power_w,cadence_rpm,app_speed_kmh,kickr_speed_kmh,road_grade_pct,grade_sent_pct,mode,mass_kg,distance_m,hr_bpm';
+  const blob = new Blob([head+'\n'+samples.map(r=>r.join(',')).join('\n')], {type:'text/csv'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `ride-${new Date().toISOString().slice(0,16).replace(/[:T]/g,'-')}.csv`; a.click();
+  log(`Saved ${samples.length} s of data`);
+};
 const togglePanel = () => { const hidden=$('panel').classList.toggle('hidden'); $('panelTab').style.display = hidden?'block':'none'; };
 $('panelTab').onclick = togglePanel;
 $('hidePanel').onclick = togglePanel;
@@ -687,7 +704,7 @@ function frame(){
 
   // send to trainer ~1 Hz
   tickAcc += dt;
-  if (tickAcc > 1){ tickAcc = 0;
+  if (tickAcc > 1){ tickAcc = 0; logSample(power, grade);
     trainer.tick(S.mode==='manual' ? S.manualGrade : grade*S.difficulty);
   }
 
@@ -737,6 +754,7 @@ function frame(){
       $('mGrade').textContent = `${shown>=0?'':'−'}${Math.abs(shown).toFixed(1)}%`;
       $('mGrade').style.color = shown>6?'#ff8a6b':shown>3?'#ffc27a':'';
     }
+    if (S.bikeSpeed!=null && S.connected){ $('bikeSpd').classList.remove('hidden-el'); $('bikeSpd').textContent = `KICKR says ${S.bikeSpeed.toFixed(1)}`; }
     if (S.hr){ $('tHr').classList.remove('hidden-el'); $('mHr').innerHTML = `${S.hr}<small>bpm</small>`; }
     $('banner').style.opacity = (S.connected || S.simulate) ? 0 : 1;
   }
