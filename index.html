@@ -1031,7 +1031,7 @@ function recordPoint(power){
 function resetSession(){
   if (W.active) finishWorkout(false, true);
   S.dist=0; S.v=0; S.elapsed=0; S.runAlt=0; samples.length=0; track=[]; lapStarts=[0]; S.frozen=false;
-  shots.forEach(s=>URL.revokeObjectURL(s.url)); shots.length=0; lastAutoShot=0; prevElev=null;
+  shots.forEach(s=>URL.revokeObjectURL(s.url)); shots.length=0; nextAuto = 240 + Math.random()*600;
   log('New session');
 }
 const isoS = t => new Date(t).toISOString().replace(/\.\d{3}Z$/,'Z');
@@ -1422,7 +1422,7 @@ function drawWorkoutStrip(){
 /* =========================================================
    SNAPSHOTS — manual (button / P) and automatic key moments
    ========================================================= */
-const shots = []; let pendingShot = null, lastAutoShot = 0, lastElevTrend = 0, prevElev = null;
+const shots = []; let pendingShot = null;
 function requestShot(reason){ if (!pendingShot) pendingShot = reason; }
 $('snap').onclick = () => requestShot('manual');
 function takeShot(reason){
@@ -1444,25 +1444,20 @@ function takeShot(reason){
   }
   x.font = `500 ${22*u}px "Inter Tight", sans-serif`; x.fillStyle = 'rgba(255,255,255,.75)'; x.textAlign = 'right';
   x.fillText('Kicks Ride', c.width - 40*u, py);
-  c.toBlob(b => { if (!b) return; shots.push({ blob:b, url:URL.createObjectURL(b), reason, t:Date.now(), sel:true }); }, 'image/jpeg', 0.9);
-  const f = $('flash'); f.style.transition = 'none'; f.style.opacity = reason==='manual' ? 0.7 : 0.25;
+  c.toBlob(b => { if (!b) return;
+    shots.push({ blob:b, url:URL.createObjectURL(b), reason, t:Date.now(), sel:reason==='manual' });
+    while (shots.length > 6){ let i = shots.findIndex(q=>q.reason==='auto'); if (i<0) i = 0; URL.revokeObjectURL(shots[i].url); shots.splice(i,1); }
+  }, 'image/jpeg', 0.9);
+  const f = $('flash'); f.style.transition = 'none'; f.style.opacity = reason==='manual' ? 0.7 : 0;
   requestAnimationFrame(() => { f.style.transition = 'opacity .35s'; f.style.opacity = 0; });
-  log(`Snapshot (${reason})`);
+  if (reason==='manual') log('Snapshot');
 }
-// automatic: a summit, roughly every 10 minutes moving, and the last rep of a workout
+// automatic: up to 3 at random moments while moving (never tied to climbs or hard reps)
+let nextAuto = 240 + Math.random()*600;
 function autoShots(){
-  if (!$('autoSnap').checked || S.frozen || !(S.connected || S.simulate) || S.v < 0.5 || shots.length >= 20) return;
-  const e = elevAt(S.dist), now = S.elapsed;
-  if (prevElev != null){
-    const trend = Math.sign(e - prevElev);
-    if (S.sport==='ride' && lastElevTrend > 0 && trend < 0 && now - lastAutoShot > 120) { lastAutoShot = now; requestShot('summit'); }
-    if (trend) lastElevTrend = trend;
-  }
-  prevElev = e;
-  if (now - lastAutoShot > 600){ lastAutoShot = now; requestShot('moment'); }
-  if (W.active && W.steps[W.i] && W.steps[W.i].kind==='work' && W.i === W.steps.map(s=>s.kind).lastIndexOf('work') && !W.lastRepShot){
-    const r = stepRemaining(); if (r.secs < 20){ W.lastRepShot = true; requestShot('final rep'); }
-  }
+  if (!$('autoSnap').checked || S.frozen || !(S.connected || S.simulate) || S.v < 0.5) return;
+  if (shots.filter(s=>s.reason==='auto').length >= 3) return;
+  if (S.elapsed >= nextAuto){ nextAuto = S.elapsed + 300 + Math.random()*900; requestShot('auto'); }
 }
 function renderShots(){
   $('shotsWrap').classList.toggle('hidden-el', !shots.length);
