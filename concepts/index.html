@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Ride — KICKR test course</title>
+<title>Route Explorer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
@@ -101,7 +101,16 @@
   #shots img{height:84px;border-radius:8px;border:2px solid transparent;cursor:pointer;opacity:.45}
   #shots img.sel{border-color:var(--accent);opacity:1}
   .log-actions{display:flex;gap:6px;margin-bottom:8px}.log-actions button{flex:1;padding:6px 8px;font-size:12px}
-  body.clean #hud, body.clean #panel, body.clean #panelTab{display:none!important}
+  body.clean #hud, body.clean #panel, body.clean #panelTab, body.clean #wkModal, body.clean #doneModal{display:none!important}
+  #exp{position:fixed;left:24px;bottom:24px;z-index:10;background:rgba(14,16,19,.72);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:14px 16px;font-size:13px;color:#f4f1ec;min-width:300px}
+  #exp.min .help{display:none}
+  #exp .top{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  #exp select{font:inherit;color:#f4f1ec;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:6px 8px}
+  #exp .nums{display:flex;gap:18px;font-family:"JetBrains Mono",monospace;font-size:20px;font-weight:600;margin:4px 0 8px}
+  #exp .nums span{display:block;font-family:"Inter Tight",sans-serif;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:rgba(244,241,236,.65);font-weight:500}
+  #exp .help{color:rgba(244,241,236,.7);line-height:1.75}
+  #exp kbd{font-family:"JetBrains Mono",monospace;font-size:11px;border:1px solid rgba(255,255,255,.2);border-radius:4px;padding:0 5px;color:#f4f1ec}
+  canvas#gl{cursor:grab}canvas#gl:active{cursor:grabbing}
 </style>
 <script type="importmap">
 { "imports": {
@@ -113,6 +122,18 @@
 <body>
 <canvas id="gl"></canvas>
 <div id="flash"></div>
+<div id="exp">
+  <div class="top"><b style="font-size:15px">Route Explorer</b>
+    <select id="expMood" aria-label="Environment mood"><option value="highlands">Highlands</option><option value="dawn">Dawn</option><option value="coast">Coast</option><option value="night">Night</option></select>
+    <button id="expMin" style="margin-left:auto;padding:5px 9px">–</button></div>
+  <div class="nums"><div><span>Speed</span><b id="expSpd">25</b> km/h</div><div><span>Distance</span><b id="expDist">0.00</b> km</div><div><span>Grade</span><b id="expGrade">0%</b></div></div>
+  <div class="help">
+    <kbd>↑</kbd><kbd>↓</kbd> speed (down past 0 reverses) · <kbd>Space</kbd> stop<br>
+    <kbd>←</kbd><kbd>→</kbd> or drag to look around · <kbd>R</kbd> look ahead<br>
+    <kbd>[</kbd><kbd>]</kbd> jump 500 m · <kbd>V</kbd> first person / chase<br>
+    <kbd>1</kbd>–<kbd>4</kbd> mood · <kbd>H</kbd> hide this · <kbd>F</kbd> fullscreen · <kbd>P</kbd> snapshot
+  </div>
+</div>
 
 <div id="hud">
   <div class="metrics">
@@ -315,7 +336,9 @@ const MOODS = {
   coast: { exposure:1.05, fog:['#d7a98a',260,3200], sky:['#36557e','#f2b27c','#ff9a5a'], sunDir:[-0.85,0.07,0.52], hemi:['#f0d8c0','#4c4a3a',1.0], sun:['#ffb07a',2.8], treeL:0.9, bloom:0.35, sea:true },
   night: { exposure:1.25, fog:['#0b0f16',15,420], sky:['#04060b','#141b29','#000000'], sunDir:[0.3,0.6,-0.7], hemi:['#5a6a8a','#0a0a08',0.12], sun:['#8aa0c8',0.25], treeL:0.35, bloom:0.9, lamps:true, wet:true },
 };
-const MOOD = MOODS[new URLSearchParams(location.search).get('mood') || 'dawn'];
+const MOOD = MOODS[new URLSearchParams(location.search).get('mood') || 'highlands'];
+const EXP = { on:true, speed:25, yaw:0, yawT:0, pitch:0 };
+
 
 /* =========================================================
    STATE
@@ -1625,7 +1648,7 @@ function frame(){
       simCad += ((power>0 ? 82 + power*0.03 : 0) - simCad)*dt*2;
       S.cadence = simCad;
     } else { S.power = 0; S.cadence = 0; }
-    stepPhysics(dt, power, grade);
+    if (EXP.on){ S.v = EXP.speed/3.6; S.dist += S.v*dt; S.cadence = EXP.speed ? 85 : 0; } else stepPhysics(dt, power, grade);
   }
   S.curPower = power;
   if (!S.frozen && (S.v > 0.3 || power > 0)) S.elapsed += dt;
@@ -1676,6 +1699,7 @@ function frame(){
   }
   camLook.lerp(ahead, camLook.lengthSq()===0 ? 1 : Math.min(1, dt*4));
   camera.lookAt(camLook);
+  if (EXP.on){ EXP.yaw += (EXP.yawT - EXP.yaw)*Math.min(1,dt*8); camera.rotateY(EXP.yaw); camera.rotateX(EXP.pitch); }
 
   sun.position.copy(base).add(SUN_OFFSET); sun.target.position.copy(base);
   scene.userData.sky.position.copy(camera.position);
@@ -1720,6 +1744,39 @@ function frame(){
   requestAnimationFrame(frame);
 }
 frame();
+/* ---------- Route Explorer ---------- */
+{
+  const qs = new URLSearchParams(location.search);
+  document.body.classList.add('clean'); S.simulate = true;
+  if (qs.get('d')) S.dist = +qs.get('d');
+  if (qs.get('v')==='chase') setView('chase');
+  $('expMood').value = qs.get('mood') || 'highlands';
+  const goMood = m => { location.search = `?mood=${m}&d=${Math.round(S.dist)}&v=${S.view}`; };
+  $('expMood').onchange = e => goMood(e.target.value);
+  $('expMin').onclick = () => { const m = $('exp').classList.toggle('min'); $('expMin').textContent = m ? '+' : '–'; };
+  const moods = ['highlands','dawn','coast','night'];
+  addEventListener('keydown', e => {
+    if (e.target.tagName==='SELECT') return;
+    const k = e.key, kl = k.toLowerCase(); let used = true;
+    if (k==='ArrowUp' || kl==='w') EXP.speed = Math.min(80, EXP.speed + 5);
+    else if (k==='ArrowDown' || kl==='s') EXP.speed = Math.max(-30, EXP.speed - 5);
+    else if (k===' ') EXP.speed = 0;
+    else if (k==='ArrowLeft' || kl==='a') EXP.yawT += 0.35;
+    else if (k==='ArrowRight' || kl==='d') EXP.yawT -= 0.35;
+    else if (kl==='r'){ EXP.yawT = 0; EXP.pitch = 0; }
+    else if (k==='[') S.dist -= 500;
+    else if (k===']') S.dist += 500;
+    else if (k>='1' && k<='4') goMood(moods[+k-1]);
+    else if (kl==='h') $('exp').style.display = $('exp').style.display==='none' ? '' : 'none';
+    else used = false;
+    if (used){ e.preventDefault(); e.stopImmediatePropagation(); }
+  }, true);
+  let drag = null;
+  $('gl').addEventListener('pointerdown', e => { drag = { x:e.clientX, y:e.clientY, yaw:EXP.yawT, pitch:EXP.pitch }; $('gl').setPointerCapture(e.pointerId); });
+  $('gl').addEventListener('pointermove', e => { if (!drag) return; EXP.yawT = drag.yaw - (e.clientX-drag.x)*0.004; EXP.yaw = EXP.yawT; EXP.pitch = Math.max(-0.6, Math.min(0.5, drag.pitch - (e.clientY-drag.y)*0.003)); });
+  $('gl').addEventListener('pointerup', () => drag = null);
+  setInterval(() => { $('expSpd').textContent = EXP.speed; $('expDist').textContent = (wrap(S.dist)/1000).toFixed(2); const g = gradeAt(S.dist); $('expGrade').textContent = `${g.toFixed(1)}%`; }, 200);
+}
 window.__snap = () => camLook.set(0,0,0); window.__ride = S; window.__trainer = trainer; window.__W = W; window.__tcx = () => buildTCX(); window.__track = () => track; // handy for debugging in the console
 </script>
 </body>
