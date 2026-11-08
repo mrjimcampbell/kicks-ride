@@ -1,0 +1,737 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ride — KICKR test course</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#f4f1ec; --dim:rgba(244,241,236,.62); --faint:rgba(244,241,236,.18);
+    --glass:rgba(18,20,24,.46); --line:rgba(255,255,255,.10);
+    --accent:#ffb36b; --good:#8fd6a4; --warn:#ff7a6b;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:#0d0f12;color:var(--ink);
+    font-family:"Inter Tight",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  canvas#gl{position:fixed;inset:0;width:100%;height:100%;display:block}
+  .mono{font-family:"JetBrains Mono",ui-monospace,monospace}
+
+  /* HUD */
+  #hud{position:fixed;inset:0;pointer-events:none}
+  .metrics{position:absolute;top:28px;left:32px;display:flex;gap:10px}
+  .tile{background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border:1px solid var(--line);border-radius:14px;padding:12px 18px 10px;min-width:118px}
+  .tile .k{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .tile .v{font-family:"JetBrains Mono",monospace;font-weight:600;font-size:40px;line-height:1.1;font-variant-numeric:tabular-nums}
+  .tile .v small{font-size:14px;font-weight:400;color:var(--dim);margin-left:4px}
+  .tile.power{min-width:150px}
+  .tile.power .v{font-size:56px}
+  .right{position:absolute;top:28px;right:32px;display:flex;gap:10px}
+  .grade{position:absolute;right:32px;bottom:118px;text-align:right}
+  .grade .v{font-family:"JetBrains Mono",monospace;font-size:64px;font-weight:600;line-height:1}
+  .grade .k{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-bottom:6px}
+  #profile{position:absolute;left:32px;right:32px;bottom:26px;height:76px;width:calc(100% - 64px);
+    border-radius:12px;background:var(--glass);backdrop-filter:blur(14px);border:1px solid var(--line)}
+  #banner{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;
+    font-size:15px;color:var(--dim);letter-spacing:.04em;transition:opacity .6s}
+  #banner b{display:block;font-size:30px;color:var(--ink);font-weight:500;letter-spacing:0;margin-bottom:8px}
+
+  /* Panel */
+  #panel{position:fixed;top:0;right:0;bottom:0;width:320px;padding:22px 20px;overflow:auto;
+    background:rgba(14,16,19,.86);backdrop-filter:blur(18px);border-left:1px solid var(--line);
+    transform:translateX(0);transition:transform .35s ease;font-size:13px;z-index:5}
+  #panel.hidden{transform:translateX(100%)}
+  #panel h1{font-size:18px;font-weight:600;margin:0 0 2px}
+  #panel .sub{color:var(--dim);margin-bottom:18px}
+  #panel section{border-top:1px solid var(--line);padding:14px 0}
+  #panel h2{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0 0 10px;font-weight:500}
+  button{font:inherit;color:var(--ink);background:rgba(255,255,255,.07);border:1px solid var(--line);
+    border-radius:9px;padding:8px 12px;cursor:pointer}
+  button:hover{background:rgba(255,255,255,.13)}
+  button.primary{background:var(--accent);color:#1b1206;border-color:transparent;font-weight:600;width:100%;padding:11px}
+  button.primary:hover{filter:brightness(1.07)}
+  .seg{display:flex;gap:4px;background:rgba(255,255,255,.05);padding:3px;border-radius:10px}
+  .seg button{flex:1;border:0;background:transparent;padding:7px 4px}
+  .seg button.on{background:rgba(255,255,255,.16)}
+  .row{display:flex;align-items:center;gap:10px;margin:8px 0}
+  .row label{flex:1;color:var(--dim)}
+  .row output,.row .val{font-family:"JetBrains Mono",monospace;min-width:52px;text-align:right}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  input[type=number]{width:72px;font:inherit;color:var(--ink);background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:7px;padding:5px 7px}
+  #status{margin-top:10px;color:var(--dim)} #status.ok{color:var(--good)} #status.bad{color:var(--warn)}
+  #log{font-family:"JetBrains Mono",monospace;font-size:10.5px;line-height:1.5;color:var(--dim);
+    max-height:170px;overflow:auto;white-space:pre-wrap}
+  .keys{color:var(--dim);line-height:1.7}
+  kbd{font-family:"JetBrains Mono",monospace;font-size:11px;border:1px solid var(--line);border-radius:4px;padding:0 5px}
+  #panelTab{position:fixed;right:32px;top:126px;z-index:4;display:none}
+  .hidden-el{display:none!important}
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+} }
+</script>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div id="hud">
+  <div class="metrics">
+    <div class="tile power"><div class="k">Power</div><div class="v" id="mPower">0<small>W</small></div></div>
+    <div class="tile"><div class="k">Cadence</div><div class="v" id="mCad">0<small>rpm</small></div></div>
+    <div class="tile"><div class="k">Speed</div><div class="v" id="mSpeed">0.0<small>km/h</small></div></div>
+    <div class="tile hidden-el" id="tHr"><div class="k">Heart</div><div class="v" id="mHr">–<small>bpm</small></div></div>
+  </div>
+  <div class="right">
+    <div class="tile"><div class="k">Distance</div><div class="v" id="mDist">0.00<small>km</small></div></div>
+    <div class="tile"><div class="k">Time</div><div class="v" id="mTime">0:00</div></div>
+    <div class="tile"><div class="k">Lap</div><div class="v" id="mLap">1</div></div>
+  </div>
+  <div class="grade"><div class="k" id="gLabel">Gradient</div><div class="v" id="mGrade">0.0%</div></div>
+  <canvas id="profile"></canvas>
+  <div id="banner"><b>Connect your KICKR to start</b>or tick “simulate power” to try it without the bike</div>
+</div>
+
+<button id="panelTab">Settings</button>
+
+<aside id="panel">
+  <h1>Ride</h1>
+  <div class="sub">Test loop · <span id="courseLen"></span></div>
+
+  <section>
+    <h2>Trainer</h2>
+    <button class="primary" id="connect">Connect KICKR</button>
+    <div id="status">Not connected</div>
+    <div class="row" style="margin-top:12px"><label><input type="checkbox" id="simToggle"> No bike — simulate power</label></div>
+    <div id="simCtl" class="hidden-el">
+      <div class="row"><label>Simulated power</label><output id="simPowerOut">180 W</output></div>
+      <input type="range" id="simPower" min="0" max="600" step="5" value="180">
+    </div>
+  </section>
+
+  <section>
+    <h2>Mode</h2>
+    <div class="seg" id="modeSeg">
+      <button data-mode="sim" class="on">Course</button>
+      <button data-mode="erg">ERG</button>
+      <button data-mode="manual">Fixed grade</button>
+    </div>
+    <div id="ctl-sim" style="margin-top:12px">
+      <div class="row"><label>Trainer difficulty</label><output id="diffOut">100%</output></div>
+      <input type="range" id="diff" min="0" max="100" step="5" value="100">
+      <div class="keys" style="margin-top:6px">How much of the road's gradient the bike feels. Zwift's default is 50%.</div>
+    </div>
+    <div id="ctl-erg" class="hidden-el" style="margin-top:12px">
+      <div class="row"><label>Target power</label><output id="ergOut">150 W</output></div>
+      <input type="range" id="erg" min="50" max="450" step="5" value="150">
+    </div>
+    <div id="ctl-manual" class="hidden-el" style="margin-top:12px">
+      <div class="row"><label>Grade sent to bike</label><output id="manOut">0.0%</output></div>
+      <input type="range" id="man" min="-5" max="15" step="0.5" value="0">
+    </div>
+  </section>
+
+  <section>
+    <h2>Rider</h2>
+    <div class="row"><label>Rider + bike weight</label><input type="number" id="mass" value="83" min="40" max="160"> kg</div>
+  </section>
+
+  <section>
+    <h2>View</h2>
+    <div class="seg" id="viewSeg">
+      <button data-view="fp" class="on">First person</button>
+      <button data-view="chase">Chase</button>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button id="fs" style="flex:1">Fullscreen</button>
+      <button id="reset" style="flex:1">Reset ride</button>
+    </div>
+    <div class="keys"><kbd>V</kbd> view · <kbd>F</kbd> fullscreen · <kbd>H</kbd> hide panel · <kbd>↑</kbd><kbd>↓</kbd> sim power</div>
+  </section>
+
+  <section>
+    <h2>Bluetooth log</h2>
+    <div id="log"></div>
+  </section>
+</aside>
+
+<script type="module">
+import * as THREE from 'three';
+
+/* =========================================================
+   STATE
+   ========================================================= */
+const S = {
+  connected:false, simulate:false, simPower:180,
+  power:0, cadence:0, hr:null,
+  v:0, dist:0, elapsed:0,
+  mode:'sim', difficulty:1, erg:150, manualGrade:0,
+  mass:83, cda:0.32, crr:0.004,
+  view:'fp',
+};
+const $ = id => document.getElementById(id);
+const logEl = $('log');
+function log(msg){
+  const t = new Date().toTimeString().slice(0,8);
+  logEl.textContent = `${t}  ${msg}\n` + logEl.textContent.slice(0,6000);
+  console.log('[ride]', msg);
+}
+
+/* =========================================================
+   TRAINER — Bluetooth FTMS (Fitness Machine Service)
+   ========================================================= */
+const OP = { REQUEST_CONTROL:0x00, RESET:0x01, SET_RESISTANCE:0x04, SET_POWER:0x05, START:0x07, STOP:0x08, SET_SIM:0x11, RESPONSE:0x80 };
+const OP_NAME = {0:'request control',1:'reset',4:'resistance',5:'ERG target',7:'start',8:'stop',0x11:'gradient'};
+
+class Trainer {
+  constructor(){ this.pending=null; this.lastSent={}; this.dataSeen=false; }
+
+  async connect(){
+    this.device = await navigator.bluetooth.requestDevice({
+      filters:[{services:['fitness_machine']}],
+      optionalServices:['heart_rate','device_information']
+    });
+    log(`Selected ${this.device.name||'device'}`);
+    this.device.addEventListener('gattserverdisconnected', () => this.onDisconnect());
+    await this.open();
+  }
+
+  async open(){
+    this.server = await this.device.gatt.connect();
+    const svc = await this.server.getPrimaryService('fitness_machine');
+    this.cp  = await svc.getCharacteristic(0x2AD9);   // control point
+    this.ibd = await svc.getCharacteristic(0x2AD2);   // indoor bike data
+    this.cp.addEventListener('characteristicvaluechanged', e => this.onControl(e.target.value));
+    await this.cp.startNotifications();               // indications
+    this.ibd.addEventListener('characteristicvaluechanged', e => this.onData(e.target.value));
+    await this.ibd.startNotifications();
+    try{
+      const st = await svc.getCharacteristic(0x2ADA);
+      st.addEventListener('characteristicvaluechanged', e => this.onStatus(e.target.value));
+      await st.startNotifications();
+    }catch{}
+    try{
+      const pr = await svc.getCharacteristic(0x2AD8);
+      const d = await pr.readValue();
+      log(`Power range ${d.getInt16(0,true)}–${d.getInt16(2,true)} W`);
+    }catch{}
+    this.lastSent = {};
+    await this.send([OP.REQUEST_CONTROL]);
+    await this.send([OP.START]);
+    S.connected = true;
+    setStatus(`Connected · ${this.device.name||'trainer'}`, 'ok');
+    log('Control granted, streaming');
+  }
+
+  async onDisconnect(){
+    S.connected = false; this.pending = null;
+    setStatus('Disconnected — reconnecting…','bad'); log('Disconnected');
+    for (let i=1;i<=5;i++){
+      await new Promise(r=>setTimeout(r, 1500*i));
+      try{ await this.open(); return; }catch(e){ log(`Reconnect ${i} failed: ${e.message}`); }
+    }
+    setStatus('Disconnected. Press Connect again.','bad');
+  }
+
+  /* writes are serialised: wait for the indication reply before the next */
+  send(bytes){
+    this.q = (this.q || Promise.resolve()).then(() => this._send(bytes));
+    return this.q;
+  }
+  _send(bytes){
+    return new Promise(async resolve => {
+      const op = bytes[0];
+      const timer = setTimeout(() => { this.pending=null; log(`No reply to ${OP_NAME[op]}`); resolve(false); }, 2500);
+      this.pending = { op, done:(ok)=>{ clearTimeout(timer); this.pending=null; resolve(ok); } };
+      try{ await this.cp.writeValueWithResponse(new Uint8Array(bytes)); }
+      catch(e){ clearTimeout(timer); this.pending=null; log(`Write failed (${OP_NAME[op]}): ${e.message}`); resolve(false); }
+    });
+  }
+  get busy(){ return !!this.pending; }
+
+  onControl(dv){
+    if (dv.getUint8(0) !== OP.RESPONSE) return;
+    const req = dv.getUint8(1), res = dv.getUint8(2);
+    const RES = {1:'ok',2:'not supported',3:'invalid parameter',4:'failed',5:'control not permitted'};
+    if (res !== 1) log(`${OP_NAME[req]||req}: ${RES[res]||res}`);
+    if (res === 5 && req !== OP.REQUEST_CONTROL) this.send([OP.REQUEST_CONTROL]);
+    if (this.pending && this.pending.op === req) this.pending.done(res===1);
+  }
+
+  onStatus(dv){
+    const c = dv.getUint8(0);
+    const names = {0x04:'started',0x02:'stopped/paused',0x08:'target power changed',0x12:'sim params changed',0xFF:'control lost'};
+    if (c===0xFF){ log('Another app took control'); }
+    else if (names[c] && c!==0x12 && c!==0x08) log(`Trainer ${names[c]}`);
+  }
+
+  /* Indoor Bike Data 0x2AD2 */
+  onData(dv){
+    let o = 0; const f = dv.getUint16(o,true); o += 2;
+    if (!(f & 0x0001)) { o += 2; }                         // instantaneous speed (we simulate our own)
+    if (f & 0x0002) o += 2;                                // avg speed
+    if (f & 0x0004) { S.cadence = dv.getUint16(o,true)/2; o += 2; }
+    if (f & 0x0008) o += 2;                                // avg cadence
+    if (f & 0x0010) o += 3;                                // total distance
+    if (f & 0x0020) o += 2;                                // resistance level
+    if (f & 0x0040) { S.power = Math.max(0, dv.getInt16(o,true)); o += 2; }
+    if (f & 0x0080) o += 2;                                // avg power
+    if (f & 0x0100) o += 5;                                // energy
+    if (f & 0x0200) { const hr = dv.getUint8(o); o += 1; if (hr>0) S.hr = hr; }
+    if (!this.dataSeen){ this.dataSeen = true; log('Receiving bike data'); }
+  }
+
+  /* called ~1×/s from the main loop */
+  tick(gradeForBike){
+    if (!S.connected || this.busy) return;
+    if (S.mode === 'erg'){
+      if (this.lastSent.erg !== S.erg){
+        this.lastSent = { erg:S.erg };
+        const w = S.erg; this.send([OP.SET_POWER, w & 0xff, (w>>8) & 0xff]);
+      }
+      return;
+    }
+    const g = Math.round(gradeForBike*10)/10;   // 0.1% steps
+    const now = performance.now();
+    if (this.lastSent.grade !== g || now - (this.lastSent.t||0) > 8000){
+      this.lastSent = { grade:g, t:now };
+      const dv = new DataView(new ArrayBuffer(7));
+      dv.setUint8(0, OP.SET_SIM);
+      dv.setInt16(1, 0, true);                              // wind speed 0.001 m/s
+      dv.setInt16(3, Math.round(g*100), true);              // grade 0.01 %
+      dv.setUint8(5, Math.round(S.crr*10000));              // Crr 0.0001
+      dv.setUint8(6, Math.round(0.5*1.225*S.cda*100));      // Cw 0.01 kg/m
+      this.send(Array.from(new Uint8Array(dv.buffer)));
+    }
+  }
+}
+const trainer = new Trainer();
+
+function setStatus(t, cls=''){ const s=$('status'); s.textContent=t; s.className=cls; }
+
+$('connect').onclick = async () => {
+  if (!navigator.bluetooth){
+    setStatus('Web Bluetooth isn’t available here. Use Chrome, and if it still fails, open via “Start Ride.command”.','bad');
+    return;
+  }
+  try{
+    setStatus('Choose your KICKR in the popup…');
+    await trainer.connect();
+    $('simToggle').checked = false; setSimulate(false);
+  }catch(e){
+    setStatus(e.name==='NotFoundError' ? 'No device chosen' : `Couldn’t connect: ${e.message}`, 'bad');
+    log(`Connect error: ${e.message}`);
+  }
+};
+
+/* =========================================================
+   COURSE
+   ========================================================= */
+function buildCurve(){
+  const pts=[], N=30;
+  for (let i=0;i<N;i++){
+    const a = i/N*Math.PI*2;
+    const r = 760 + 170*Math.sin(3*a+0.5) + 70*Math.sin(5*a+1.3);
+    pts.push(new THREE.Vector3(Math.cos(a)*r*1.25, elevFn(a), Math.sin(a)*r));
+  }
+  return new THREE.CatmullRomCurve3(pts, true, 'centripetal');
+}
+function elevFn(a){ return 34*Math.sin(a+0.3) + 13*Math.sin(3*a+0.7) + 4*Math.sin(7*a+2.1); }
+
+const curve = buildCurve();
+const L = curve.getLength();
+const M = 2400, ds = L/M;
+const P = [], T = [];
+for (let i=0;i<M;i++){ P.push(curve.getPointAt(i/M)); T.push(curve.getTangentAt(i/M)); }
+const elev = P.map(p=>p.y);
+const gradeArr = (()=>{                        // smoothed over ±15 m
+  const k = Math.max(1, Math.round(15/ds));
+  return elev.map((_,i)=> (elev[(i+k)%M]-elev[(i-k+M)%M])/(2*k*ds)*100);
+})();
+const wrap = s => ((s%L)+L)%L;
+function lerpArr(arr, s){ const f=wrap(s)/ds, i=Math.floor(f)%M, t=f-Math.floor(f); return arr[i]*(1-t)+arr[(i+1)%M]*t; }
+const gradeAt = s => lerpArr(gradeArr, s);
+const elevAt  = s => lerpArr(elev, s);
+$('courseLen').textContent = `${(L/1000).toFixed(2)} km loop · ${Math.round(Math.max(...elev)-Math.min(...elev))} m elevation range`;
+log(`Course ${(L/1000).toFixed(2)} km, grades ${Math.min(...gradeArr).toFixed(1)}% to ${Math.max(...gradeArr).toFixed(1)}%`);
+
+/* =========================================================
+   SCENE
+   ========================================================= */
+const renderer = new THREE.WebGLRenderer({ canvas:$('gl'), antialias:true, powerPreference:'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+const FOG = new THREE.Color('#c9c3ba');
+scene.fog = new THREE.Fog(FOG, 120, 2400);
+const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 8000);
+
+// Sky — early-morning gradient
+{
+  const g = new THREE.SphereGeometry(6000, 32, 16);
+  const m = new THREE.ShaderMaterial({
+    side:THREE.BackSide, depthWrite:false, fog:false,
+    uniforms:{ top:{value:new THREE.Color('#7f98b3')}, mid:{value:new THREE.Color('#d9d1c6')}, sun:{value:new THREE.Color('#f6c98f')}, sunDir:{value:new THREE.Vector3(0.6,0.12,-0.79).normalize()} },
+    vertexShader:`varying vec3 vP; void main(){ vP=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+    fragmentShader:`uniform vec3 top,mid,sun,sunDir; varying vec3 vP;
+      void main(){ float h=clamp(vP.y,0.,1.); vec3 c=mix(mid,top,pow(h,.55));
+        float s=max(dot(vP,sunDir),0.); c+=sun*pow(s,12.)*.55 + vec3(1.,.93,.82)*pow(s,900.)*2.;
+        gl_FragColor=vec4(c,1.); }`
+  });
+  const sky = new THREE.Mesh(g, m); sky.renderOrder=-1; scene.add(sky);
+  scene.userData.sky = sky;
+}
+
+scene.add(new THREE.HemisphereLight('#e4eaf0', '#6b6a48', 1.35));
+const sun = new THREE.DirectionalLight('#ffd9ad', 2.1);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048,2048);
+Object.assign(sun.shadow.camera, { left:-90, right:90, top:90, bottom:-90, near:1, far:600 });
+sun.shadow.bias = -0.0004;
+scene.add(sun, sun.target);
+const SUN_OFFSET = new THREE.Vector3(0.6,0.32,-0.79).normalize().multiplyScalar(300);
+
+// --- terrain height: road-following near the road, rolling hills further out
+const coarse = P.filter((_,i)=>i%4===0);
+function nearestRoad(x,z){
+  let best=1e12, by=0;
+  for (const p of coarse){ const dx=p.x-x, dz=p.z-z, d=dx*dx+dz*dz; if (d<best){best=d; by=p.y;} }
+  return { d:Math.sqrt(best), y:by };
+}
+const smooth = (a,b,x)=>{ const t=Math.min(1,Math.max(0,(x-a)/(b-a))); return t*t*(3-2*t); };
+function terrainH(x,z){
+  const { d, y } = nearestRoad(x,z);
+  const a = Math.atan2(z, x/1.25), r = Math.hypot(x/1.25, z);
+  const base = elevFn(a) * Math.min(1, r/350) * 0.85;
+  const hills = 20*Math.sin(x*0.0042+1.1)*Math.cos(z*0.0051-0.4) + 8*Math.sin(x*0.013+z*0.009) + 2.5*Math.sin(x*0.043-z*0.031);
+  const far = base + hills*smooth(20,220,d) + 70*smooth(500,1700,d);
+  const k = smooth(8, 140, d);
+  return (y-0.45)*(1-k) + far*k;
+}
+
+// Ground
+{
+  const W=5200, H=4600, sx=260, sz=230;
+  const g = new THREE.PlaneGeometry(W,H,sx,sz); g.rotateX(-Math.PI/2);
+  const pos = g.attributes.position, col = new Float32Array(pos.count*3);
+  const c1=new THREE.Color('#6f7a4a'), c2=new THREE.Color('#9a9461'), c3=new THREE.Color('#4f5c3a'), tmp=new THREE.Color();
+  for (let i=0;i<pos.count;i++){
+    const x=pos.getX(i), z=pos.getZ(i), h=terrainH(x,z);
+    pos.setY(i,h);
+    const n = 0.5+0.5*Math.sin(x*0.021+Math.cos(z*0.017)*2.0)*Math.cos(z*0.013);
+    tmp.copy(c1).lerp(c2, n*0.7).lerp(c3, smooth(10,60,h)*0.5);
+    col.set([tmp.r,tmp.g,tmp.b], i*3);
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col,3));
+  g.computeVertexNormals();
+  const ground = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors:true }));
+  ground.receiveShadow = true; scene.add(ground);
+}
+
+// Road
+const HALF = 3.4;
+{
+  const cv = document.createElement('canvas'); cv.width=256; cv.height=512;
+  const x = cv.getContext('2d');
+  x.fillStyle='#3b3c3e'; x.fillRect(0,0,256,512);
+  for (let i=0;i<5000;i++){ const v=50+Math.random()*30|0; x.fillStyle=`rgba(${v},${v},${v+2},.5)`; x.fillRect(Math.random()*256,Math.random()*512,1.5,1.5); }
+  x.fillStyle='#e8e4da'; x.fillRect(10,0,7,512); x.fillRect(239,0,7,512);   // edge lines
+  x.fillStyle='#e9e1c8'; x.fillRect(124,0,8,200);                          // centre dash
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace; tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+  const pos=[], uv=[], idx=[]; const TILE=9;
+  for (let i=0;i<=M;i++){
+    const p=P[i%M], t=T[i%M], side=new THREE.Vector3(-t.z,0,t.x).normalize();
+    pos.push(p.x-side.x*HALF, p.y+0.04, p.z-side.z*HALF,  p.x+side.x*HALF, p.y+0.04, p.z+side.z*HALF);
+    const v=(i*ds)/TILE; uv.push(0,v, 1,v);
+    if (i<M){ const a=i*2; idx.push(a,a+1,a+2, a+1,a+3,a+2); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv,2));
+  g.setIndex(idx); g.computeVertexNormals();
+  const road = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map:tex, roughness:0.92, metalness:0, polygonOffset:true, polygonOffsetFactor:-2 }));
+  road.receiveShadow = true; scene.add(road);
+
+  // verge strip
+  const vp=[], vi=[];
+  for (let i=0;i<=M;i++){
+    const p=P[i%M], t=T[i%M], s=new THREE.Vector3(-t.z,0,t.x).normalize();
+    for (const [o,h] of [[-HALF-1.6,-0.25],[-HALF,0.02],[HALF,0.02],[HALF+1.6,-0.25]]) vp.push(p.x+s.x*o, p.y+h, p.z+s.z*o);
+    if (i<M){ const a=i*4; vi.push(a,a+4,a+1, a+1,a+4,a+5,  a+2,a+6,a+3, a+3,a+6,a+7); }
+  }
+  const vg = new THREE.BufferGeometry();
+  vg.setAttribute('position', new THREE.Float32BufferAttribute(vp,3)); vg.setIndex(vi); vg.computeVertexNormals();
+  const verge = new THREE.Mesh(vg, new THREE.MeshLambertMaterial({ color:'#8a8466', side:THREE.DoubleSide }));
+  verge.receiveShadow = true; scene.add(verge);
+}
+
+// Roadside posts every 40 m
+{
+  const step = Math.round(40/ds), count = Math.floor(M/step)*2;
+  const post = new THREE.InstancedMesh(new THREE.BoxGeometry(0.12,1.05,0.12), new THREE.MeshLambertMaterial({color:'#f1eee6'}), count);
+  const cap  = new THREE.InstancedMesh(new THREE.BoxGeometry(0.13,0.12,0.13), new THREE.MeshBasicMaterial({color:'#e2582f'}), count);
+  const m = new THREE.Matrix4(); let n=0;
+  for (let i=0;i<M;i+=step){ if (n>=count) break;
+    const p=P[i], t=T[i], s=new THREE.Vector3(-t.z,0,t.x).normalize();
+    for (const side of [-1,1]){ if (n>=count) break;
+      const x=p.x+s.x*(HALF+1.1)*side, z=p.z+s.z*(HALF+1.1)*side;
+      m.makeTranslation(x,p.y+0.5,z); post.setMatrixAt(n,m);
+      m.makeTranslation(x,p.y+0.86,z); cap.setMatrixAt(n,m); n++;
+    }
+  }
+  post.castShadow = true; scene.add(post, cap);
+}
+
+// Trees
+{
+  const N = 2600, rnd = mulberry(7);
+  const trunkG = new THREE.CylinderGeometry(0.18,0.26,2.4,6); trunkG.translate(0,1.2,0);
+  const crownG = new THREE.ConeGeometry(2.2,7.5,7); crownG.translate(0,6,0);
+  const trunks = new THREE.InstancedMesh(trunkG, new THREE.MeshLambertMaterial({color:'#4a3b2c'}), N);
+  const crowns = new THREE.InstancedMesh(crownG, new THREE.MeshLambertMaterial({color:'#3f5236'}), N);
+  const m=new THREE.Matrix4(), q=new THREE.Quaternion(), sc=new THREE.Vector3(), ps=new THREE.Vector3(), c=new THREE.Color();
+  let n=0, guard=0;
+  while (n<N && guard++<N*8){
+    // cluster trees around the road so they're seen, plus woodland patches
+    const i = rnd()*M|0, p=P[i], t=T[i], s=new THREE.Vector3(-t.z,0,t.x).normalize();
+    const off = (rnd()<0.5?-1:1) * (14 + Math.pow(rnd(),1.6)*420);
+    const x = p.x + s.x*off + (rnd()-0.5)*30, z = p.z + s.z*off + (rnd()-0.5)*30;
+    const patch = Math.sin(x*0.006)*Math.cos(z*0.007);
+    if (patch < -0.15 && Math.abs(off) > 40) continue;
+    if (nearestRoad(x,z).d < 11) continue;
+    const k = 0.65 + rnd()*0.9;
+    ps.set(x, terrainH(x,z)-0.2, z); q.setFromAxisAngle(new THREE.Vector3(0,1,0), rnd()*6.28); sc.set(k, k*(0.85+rnd()*0.4), k);
+    m.compose(ps,q,sc); trunks.setMatrixAt(n,m); crowns.setMatrixAt(n,m);
+    c.setHSL(0.22+rnd()*0.08, 0.25+rnd()*0.12, 0.30+rnd()*0.12); crowns.setColorAt(n,c);
+    n++;
+  }
+  trunks.count = crowns.count = n;
+  crowns.castShadow = trunks.castShadow = true;
+  scene.add(trunks, crowns);
+}
+function mulberry(a){ return ()=>{ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+
+// Placeholder bike + rider (forward = +z)
+const bike = new THREE.Group();
+const wheels = [];
+{
+  const dark = new THREE.MeshStandardMaterial({ color:'#1d1f22', roughness:0.6 });
+  const frameM = new THREE.MeshStandardMaterial({ color:'#d6633a', roughness:0.4, metalness:0.2 });
+  const kit = new THREE.MeshStandardMaterial({ color:'#2d3440', roughness:0.8 });
+  const skin = new THREE.MeshStandardMaterial({ color:'#c99a7c', roughness:0.8 });
+  for (const z of [-0.5, 0.5]){
+    const w = new THREE.Group();
+    w.add(new THREE.Mesh(new THREE.TorusGeometry(0.33,0.025,8,40), dark));
+    for (let k=0;k<6;k++){ const sp=new THREE.Mesh(new THREE.BoxGeometry(0.005,0.64,0.005), dark); sp.rotation.x=k*Math.PI/6; w.add(sp); }
+    w.children.forEach(c=>c.rotation.y += c.geometry.type==='TorusGeometry'?Math.PI/2:0);
+    w.position.set(0,0.34,z); bike.add(w); wheels.push(w);
+  }
+  const tube = (a,b,r=0.022)=>{ const A=new THREE.Vector3(...a),B=new THREE.Vector3(...b);
+    const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,A.distanceTo(B),8), frameM);
+    m.position.copy(A).add(B).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), B.clone().sub(A).normalize()); bike.add(m); };
+  tube([0,0.34,-0.5],[0,0.36,-0.05]); tube([0,0.36,-0.05],[0,0.82,-0.12]); tube([0,0.82,-0.12],[0,0.8,0.42]);
+  tube([0,0.36,-0.05],[0,0.76,0.4]); tube([0,0.34,-0.5],[0,0.82,-0.12]); tube([0,0.34,0.5],[0,0.92,0.44]);
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.015,0.015,0.42,8), dark); bar.rotation.z=Math.PI/2; bar.position.set(0,0.94,0.46); bike.add(bar);
+  // rider
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.17,0.42,4,10), kit); torso.position.set(0,1.18,0.12); torso.rotation.x = 1.05; bike.add(torso);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.12,16,12), skin); head.position.set(0,1.38,0.44); bike.add(head);
+  const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.135,16,12,0,Math.PI*2,0,Math.PI/2), frameM); helmet.position.copy(head.position); helmet.position.y+=0.02; bike.add(helmet);
+  for (const sx of [-0.12,0.12]){ const arm=new THREE.Mesh(new THREE.CapsuleGeometry(0.045,0.42,4,8), kit); arm.position.set(sx,1.13,0.35); arm.rotation.x=0.55; bike.add(arm); }
+  bike.userData.legs = [];
+  for (const sx of [-0.1,0.1]){ const leg=new THREE.Mesh(new THREE.CapsuleGeometry(0.07,0.6,4,8), kit); leg.position.set(sx,0.75,-0.08); bike.add(leg); bike.userData.legs.push(leg); }
+  bike.traverse(o=>{ if(o.isMesh) o.castShadow=true; });
+}
+scene.add(bike);
+
+/* =========================================================
+   PHYSICS — power + slope → speed
+   ========================================================= */
+function stepPhysics(dt, power, gradePct){
+  const g=9.81, rho=1.225, eta=0.976, m=S.mass;
+  const th = Math.atan(gradePct/100);
+  const v = S.v, vEff = Math.max(v, 1.2);
+  const F = (power*eta)/vEff - m*g*Math.sin(th) - m*g*S.crr*Math.cos(th) - 0.5*rho*S.cda*v*v;
+  S.v = Math.max(0, v + F/(m+1.4)*dt);
+  S.dist += S.v*dt;
+}
+
+/* =========================================================
+   ELEVATION PROFILE
+   ========================================================= */
+const prof = $('profile'), pctx = prof.getContext('2d');
+let profBase = null;
+function drawProfileBase(){
+  const r = Math.min(devicePixelRatio,2);
+  prof.width = prof.clientWidth*r; prof.height = prof.clientHeight*r;
+  const w=prof.width, h=prof.height, lo=Math.min(...elev)-4, hi=Math.max(...elev)+4;
+  const off = document.createElement('canvas'); off.width=w; off.height=h; const c=off.getContext('2d');
+  const y = e => h - 8*r - (e-lo)/(hi-lo)*(h-22*r);
+  c.beginPath(); c.moveTo(0,h);
+  for (let i=0;i<=w;i++) c.lineTo(i, y(elevAt(i/w*L)));
+  c.lineTo(w,h); c.closePath();
+  const gr = c.createLinearGradient(0,0,0,h); gr.addColorStop(0,'rgba(255,179,107,.42)'); gr.addColorStop(1,'rgba(255,179,107,.04)');
+  c.fillStyle=gr; c.fill();
+  c.beginPath(); for (let i=0;i<=w;i++) c.lineTo(i, y(elevAt(i/w*L)));
+  c.strokeStyle='rgba(255,210,170,.85)'; c.lineWidth=1.5*r; c.stroke();
+  profBase = { img:off, y, r };
+}
+function drawProfile(){
+  if (!profBase) return;
+  const w=prof.width, h=prof.height, {img,y,r}=profBase;
+  pctx.clearRect(0,0,w,h); pctx.drawImage(img,0,0);
+  const x = wrap(S.dist)/L*w;
+  pctx.fillStyle='rgba(255,255,255,.85)'; pctx.fillRect(x-r, 4*r, 2*r, h-8*r);
+  pctx.beginPath(); pctx.arc(x, y(elevAt(S.dist)), 5*r, 0, 7); pctx.fillStyle='#fff'; pctx.fill();
+}
+
+/* =========================================================
+   UI wiring
+   ========================================================= */
+function setSimulate(on){
+  S.simulate = on; $('simCtl').classList.toggle('hidden-el', !on);
+  if (on && !S.connected) log('Simulating power');
+}
+$('simToggle').onchange = e => setSimulate(e.target.checked);
+$('simPower').oninput = e => { S.simPower=+e.target.value; $('simPowerOut').textContent=`${S.simPower} W`; };
+$('diff').oninput = e => { S.difficulty=e.target.value/100; $('diffOut').textContent=`${e.target.value}%`; };
+$('erg').oninput  = e => { S.erg=+e.target.value; $('ergOut').textContent=`${S.erg} W`; };
+$('man').oninput  = e => { S.manualGrade=+e.target.value; $('manOut').textContent=`${S.manualGrade.toFixed(1)}%`; };
+$('mass').onchange = e => { S.mass = Math.min(160, Math.max(40, +e.target.value||83)); };
+$('modeSeg').onclick = e => {
+  const m = e.target.dataset.mode; if (!m) return; S.mode = m;
+  [...$('modeSeg').children].forEach(b=>b.classList.toggle('on', b.dataset.mode===m));
+  for (const k of ['sim','erg','manual']) $('ctl-'+k).classList.toggle('hidden-el', k!==m);
+  trainer.lastSent = {}; log(`Mode: ${e.target.textContent}`);
+};
+function setView(v){ S.view=v; [...$('viewSeg').children].forEach(b=>b.classList.toggle('on', b.dataset.view===v)); }
+$('viewSeg').onclick = e => e.target.dataset.view && setView(e.target.dataset.view);
+const toggleFS = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+$('fs').onclick = toggleFS;
+$('reset').onclick = () => { S.dist=0; S.v=0; S.elapsed=0; };
+const togglePanel = () => { const hidden=$('panel').classList.toggle('hidden'); $('panelTab').style.display = hidden?'block':'none'; };
+$('panelTab').onclick = togglePanel;
+addEventListener('keydown', e => {
+  if (e.target.tagName==='INPUT' && e.target.type==='number') return;
+  const k = e.key.toLowerCase();
+  if (k==='v') setView(S.view==='fp'?'chase':'fp');
+  else if (k==='f') toggleFS();
+  else if (k==='h') togglePanel();
+  else if (e.key==='ArrowUp' || e.key==='ArrowDown'){
+    e.preventDefault();
+    if (!S.simulate){ $('simToggle').checked=true; setSimulate(true); }
+    S.simPower = Math.max(0, Math.min(600, S.simPower + (e.key==='ArrowUp'?10:-10)));
+    $('simPower').value=S.simPower; $('simPowerOut').textContent=`${S.simPower} W`;
+  }
+});
+// keep the screen awake while riding
+let wakeLock=null;
+async function keepAwake(){ try{ wakeLock = await navigator.wakeLock?.request('screen'); }catch{} }
+document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState==='visible') keepAwake(); });
+keepAwake();
+
+function resize(){
+  const w=innerWidth, h=innerHeight;
+  renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix();
+  drawProfileBase();
+}
+addEventListener('resize', resize); resize();
+
+/* =========================================================
+   LOOP
+   ========================================================= */
+const clock = new THREE.Clock();
+const camLook = new THREE.Vector3(), tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3();
+let tickAcc = 0, uiAcc = 0, crank = 0, bob = 0, simCad = 0;
+const LANE = 1.5;
+const fmtTime = s => { s=Math.floor(s); const h=Math.floor(s/3600), m=Math.floor(s/60)%60, ss=s%60; return h?`${h}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`:`${m}:${String(ss).padStart(2,'0')}`; };
+
+function frame(){
+  const dt = Math.min(clock.getDelta(), 0.1);
+
+  // power source
+  let power = 0;
+  if (S.connected) power = S.power;
+  else if (S.simulate){
+    power = S.simPower;
+    simCad += ((power>0 ? 82 + power*0.03 : 0) - simCad)*dt*2;
+    S.cadence = simCad;
+  } else { S.power = 0; S.cadence = 0; }
+
+  const grade = gradeAt(S.dist);
+  stepPhysics(dt, power, grade);
+  if (S.v > 0.3 || power > 0) S.elapsed += dt;
+
+  // send to trainer ~1 Hz
+  tickAcc += dt;
+  if (tickAcc > 1){ tickAcc = 0;
+    trainer.tick(S.mode==='manual' ? S.manualGrade : grade*S.difficulty);
+  }
+
+  // position on course
+  const u = wrap(S.dist)/L;
+  const p = curve.getPointAt(u), t = curve.getTangentAt(u);
+  const side = tmpA.set(-t.z,0,t.x).normalize();
+  const base = p.clone().addScaledVector(side, LANE);
+  const ahead = curve.getPointAt(wrap(S.dist+22)/L).addScaledVector(side, LANE);
+
+  bike.position.copy(base);
+  bike.lookAt(tmpB.copy(base).add(t));
+  wheels.forEach(w => w.rotation.x += S.v*dt/0.34);
+  crank += (S.cadence/60)*Math.PI*2*dt;
+  bike.userData.legs.forEach((l,i)=>{ l.position.y = 0.75 + Math.sin(crank + i*Math.PI)*0.06; });
+
+  bob += dt*(S.cadence/60)*Math.PI*2;
+  if (S.view==='fp'){
+    bike.visible = false;
+    camera.position.copy(base).add(tmpB.set(0, 1.55 + Math.sin(bob*2)*0.006*Math.min(1,S.v/4), 0));
+    ahead.y += 1.25;
+  } else {
+    bike.visible = true;
+    const back = curve.getPointAt(wrap(S.dist-6.5)/L).addScaledVector(side, LANE);
+    camera.position.copy(back).add(tmpB.set(0,2.5,0));
+    ahead.copy(base).add(tmpB.set(0,1.1,0)).addScaledVector(t, 4);
+  }
+  camLook.lerp(ahead, camLook.lengthSq()===0 ? 1 : Math.min(1, dt*4));
+  camera.lookAt(camLook);
+
+  sun.position.copy(base).add(SUN_OFFSET); sun.target.position.copy(base);
+  scene.userData.sky.position.copy(camera.position);
+
+  // HUD (throttled)
+  uiAcc += dt;
+  if (uiAcc > 0.15){ uiAcc = 0;
+    $('mPower').innerHTML = `${Math.round(power)}<small>W</small>`;
+    $('mCad').innerHTML   = `${Math.round(S.cadence)}<small>rpm</small>`;
+    $('mSpeed').innerHTML = `${(S.v*3.6).toFixed(1)}<small>km/h</small>`;
+    $('mDist').innerHTML  = `${(S.dist/1000).toFixed(2)}<small>km</small>`;
+    $('mTime').textContent = fmtTime(S.elapsed);
+    $('mLap').textContent  = Math.floor(S.dist/L)+1;
+    if (S.mode==='erg'){ $('gLabel').textContent='ERG target'; $('mGrade').textContent=`${S.erg} W`; }
+    else {
+      const shown = S.mode==='manual' ? S.manualGrade : grade;
+      $('gLabel').textContent = S.mode==='manual' ? 'Fixed grade' : 'Gradient';
+      $('mGrade').textContent = `${shown>=0?'':'−'}${Math.abs(shown).toFixed(1)}%`;
+      $('mGrade').style.color = shown>6?'#ff8a6b':shown>3?'#ffc27a':'';
+    }
+    if (S.hr){ $('tHr').classList.remove('hidden-el'); $('mHr').innerHTML = `${S.hr}<small>bpm</small>`; }
+    $('banner').style.opacity = (S.connected || S.simulate) ? 0 : 1;
+  }
+  drawProfile();
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+frame();
+window.__ride = S; // handy for debugging in the console
+</script>
+</body>
+</html>
