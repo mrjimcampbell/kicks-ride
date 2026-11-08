@@ -96,6 +96,10 @@
   .stats div{background:rgba(255,255,255,.05);border-radius:10px;padding:10px 12px}
   .stats b{display:block;font-family:"JetBrains Mono",monospace;font-size:22px;font-weight:600}
   .stats span{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+  #flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .35s;z-index:6}
+  #shots{display:flex;gap:8px;overflow-x:auto;padding:4px 0 8px}
+  #shots img{height:84px;border-radius:8px;border:2px solid transparent;cursor:pointer;opacity:.45}
+  #shots img.sel{border-color:var(--accent);opacity:1}
   .log-actions{display:flex;gap:6px;margin-bottom:8px}.log-actions button{flex:1;padding:6px 8px;font-size:12px}
 </style>
 <script type="importmap">
@@ -106,6 +110,7 @@
 </head>
 <body>
 <canvas id="gl"></canvas>
+<div id="flash"></div>
 
 <div id="hud">
   <div class="metrics">
@@ -227,8 +232,9 @@
       <button id="fs" style="flex:1">Fullscreen</button>
       <button id="reset" style="flex:1">Reset ride</button>
     </div>
+    <div class="row"><button id="snap" style="flex:1">Snapshot</button><label style="flex:1;color:var(--dim)"><input type="checkbox" id="autoSnap" checked> Auto snapshots</label></div>
     <button id="dl" style="width:100%;margin:2px 0 10px">Download ride data (CSV)</button>
-    <div class="keys"><kbd>V</kbd> view · <kbd>F</kbd> fullscreen · <kbd>H</kbd> hide panel · <kbd>↑</kbd><kbd>↓</kbd> sim power / speed</div>
+    <div class="keys"><kbd>V</kbd> view · <kbd>F</kbd> fullscreen · <kbd>H</kbd> hide panel · <kbd>P</kbd> snapshot · <kbd>↑</kbd><kbd>↓</kbd> sim power / speed</div>
   </section>
 
   <section>
@@ -284,6 +290,11 @@
   <div class="row" style="flex-wrap:wrap">
     <button class="primary" id="saveTcx" style="flex:2;width:auto">Save file for Strava</button>
     <button id="openStrava" style="flex:1">Open Strava upload</button>
+  </div>
+  <div id="shotsWrap" class="hidden-el" style="margin:14px 0 4px">
+    <div class="row" style="margin:0 0 6px"><label>Snapshots: tap to pick</label><button id="saveShots">Save selected</button></div>
+    <div id="shots"></div>
+    <div class="keys">Strava doesn't let apps attach photos to uploads, so save these and add them in the Strava app.</div>
   </div>
   <div class="keys" style="margin:8px 0 14px">Saves a .tcx with your laps, heart rate, cadence, speed and power. Drag it onto Strava's upload page, then set the type to Virtual Ride or Treadmill run if you like.</div>
   <div class="row"><button id="keepGoing" style="flex:1">Keep going</button><button id="newSession" style="flex:1">New session (reset)</button></div>
@@ -974,6 +985,7 @@ addEventListener('keydown', e => {
   if (k==='v') setView(S.view==='fp'?'chase':'fp');
   else if (k==='f') toggleFS();
   else if (k==='h') togglePanel();
+  else if (k==='p') requestShot('manual');
   else if (e.key==='ArrowUp' || e.key==='ArrowDown'){
     e.preventDefault();
     if (!S.simulate){ $('simToggle').checked=true; setSimulate(true); }
@@ -1019,6 +1031,7 @@ function recordPoint(power){
 function resetSession(){
   if (W.active) finishWorkout(false, true);
   S.dist=0; S.v=0; S.elapsed=0; S.runAlt=0; samples.length=0; track=[]; lapStarts=[0]; S.frozen=false;
+  shots.forEach(s=>URL.revokeObjectURL(s.url)); shots.length=0; lastAutoShot=0; prevElev=null;
   log('New session');
 }
 const isoS = t => new Date(t).toISOString().replace(/\.\d{3}Z$/,'Z');
@@ -1076,7 +1089,7 @@ function openDone(){
   $('doneTitle').textContent = W.lastName ? W.lastName : (run ? 'Treadmill run' : 'Indoor ride');
   $('doneSub').textContent = n ? `${n} seconds recorded` : 'Nothing recorded yet. Ride or run for a bit first.';
   $('doneStats').innerHTML = st.map(([k,v])=>`<div><span>${k}</span><b>${v}</b></div>`).join('');
-  $('upStatus').textContent = ''; stravaUI();
+  $('upStatus').textContent = ''; stravaUI(); renderShots();
   $('doneModal').classList.remove('hidden-el');
 }
 $('finish').onclick = () => { if (W.active) finishWorkout(false); openDone(); };
@@ -1306,7 +1319,7 @@ function startWorkout(wk){
   try{ actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); }catch{}
   W.steps = buildSteps(wk); if (!W.steps.length) return;
   S.frozen = false;
-  W.prevMode = S.mode; W.active = true; W.paused = false; W.time = 0; W.lastName = wk.name;
+  W.prevMode = S.mode; W.lastRepShot = false; W.active = true; W.paused = false; W.time = 0; W.lastName = wk.name;
   const total = W.steps.reduce((a,s)=>a+estSecs(s),0); let acc = 0;
   W.layout = W.steps.map(s => { const r = { a:acc/total, b:(acc+estSecs(s))/total, s }; acc += estSecs(s); return r; });
   $('wkModal').classList.add('hidden-el'); $('wkHud').classList.remove('hidden-el');
@@ -1407,6 +1420,63 @@ function drawWorkoutStrip(){
 }
 
 /* =========================================================
+   SNAPSHOTS — manual (button / P) and automatic key moments
+   ========================================================= */
+const shots = []; let pendingShot = null, lastAutoShot = 0, lastElevTrend = 0, prevElev = null;
+function requestShot(reason){ if (!pendingShot) pendingShot = reason; }
+$('snap').onclick = () => requestShot('manual');
+function takeShot(reason){
+  const src = renderer.domElement, scale = Math.min(1, 1920/src.width);
+  const c = document.createElement('canvas'); c.width = Math.round(src.width*scale); c.height = Math.round(src.height*scale);
+  const x = c.getContext('2d'); x.drawImage(src, 0, 0, c.width, c.height);
+  // stats overlay
+  const u = c.width/1600, g = x.createLinearGradient(0, c.height*0.72, 0, c.height);
+  g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,'rgba(0,0,0,.55)'); x.fillStyle = g; x.fillRect(0, c.height*0.7, c.width, c.height*0.3);
+  const run = S.sport==='run', items = [];
+  if (run){ const sp = S.v>0.4 ? Math.round(1000/S.v) : null; items.push([sp?`${Math.floor(sp/60)}:${String(sp%60).padStart(2,'0')}`:'–', '/km']); }
+  else items.push([String(Math.round(S.curPower||0)), 'W']);
+  if (S.hr) items.push([String(S.hr), 'bpm']);
+  items.push([(S.dist/1000).toFixed(2), 'km']); items.push([fmtTime(S.elapsed), '']);
+  let px = 48*u; const py = c.height - 52*u;
+  for (const [v, unit] of items){
+    x.font = `600 ${64*u}px "JetBrains Mono", monospace`; x.fillStyle = '#fff'; x.fillText(v, px, py); px += x.measureText(v).width + 8*u;
+    x.font = `400 ${24*u}px "Inter Tight", sans-serif`; x.fillStyle = 'rgba(255,255,255,.7)'; x.fillText(unit, px, py); px += x.measureText(unit).width + 40*u;
+  }
+  x.font = `500 ${22*u}px "Inter Tight", sans-serif`; x.fillStyle = 'rgba(255,255,255,.75)'; x.textAlign = 'right';
+  x.fillText('Kicks Ride', c.width - 40*u, py);
+  c.toBlob(b => { if (!b) return; shots.push({ blob:b, url:URL.createObjectURL(b), reason, t:Date.now(), sel:true }); }, 'image/jpeg', 0.9);
+  const f = $('flash'); f.style.transition = 'none'; f.style.opacity = reason==='manual' ? 0.7 : 0.25;
+  requestAnimationFrame(() => { f.style.transition = 'opacity .35s'; f.style.opacity = 0; });
+  log(`Snapshot (${reason})`);
+}
+// automatic: a summit, roughly every 10 minutes moving, and the last rep of a workout
+function autoShots(){
+  if (!$('autoSnap').checked || S.frozen || !(S.connected || S.simulate) || S.v < 0.5 || shots.length >= 20) return;
+  const e = elevAt(S.dist), now = S.elapsed;
+  if (prevElev != null){
+    const trend = Math.sign(e - prevElev);
+    if (S.sport==='ride' && lastElevTrend > 0 && trend < 0 && now - lastAutoShot > 120) { lastAutoShot = now; requestShot('summit'); }
+    if (trend) lastElevTrend = trend;
+  }
+  prevElev = e;
+  if (now - lastAutoShot > 600){ lastAutoShot = now; requestShot('moment'); }
+  if (W.active && W.steps[W.i] && W.steps[W.i].kind==='work' && W.i === W.steps.map(s=>s.kind).lastIndexOf('work') && !W.lastRepShot){
+    const r = stepRemaining(); if (r.secs < 20){ W.lastRepShot = true; requestShot('final rep'); }
+  }
+}
+function renderShots(){
+  $('shotsWrap').classList.toggle('hidden-el', !shots.length);
+  $('shots').innerHTML = shots.map((s,i)=>`<img src="${s.url}" data-i="${i}" class="${s.sel?'sel':''}" title="${s.reason}">`).join('');
+}
+$('shots').onclick = e => { const i = e.target.dataset.i; if (i==null) return; shots[i].sel = !shots[i].sel; renderShots(); };
+$('saveShots').onclick = async () => {
+  const pick = shots.filter(s=>s.sel); if (!pick.length) return;
+  const files = pick.map((s,i)=>new File([s.blob], `kicks-ride-${new Date(s.t).toISOString().slice(0,19).replace(/[:T]/g,'-')}-${i+1}.jpg`, {type:'image/jpeg'}));
+  if (isIOS && navigator.canShare && navigator.canShare({ files })){ try{ await navigator.share({ files }); return; }catch(e){ if (e && e.name==='AbortError') return; } }
+  for (const f of files){ const a=document.createElement('a'); a.href=URL.createObjectURL(f); a.download=f.name; document.body.appendChild(a); a.click(); a.remove(); await new Promise(r=>setTimeout(r,250)); }
+};
+
+/* =========================================================
    LOOP
    ========================================================= */
 const clock = new THREE.Clock();
@@ -1438,6 +1508,7 @@ function frame(){
     } else { S.power = 0; S.cadence = 0; }
     stepPhysics(dt, power, grade);
   }
+  S.curPower = power;
   if (!S.frozen && (S.v > 0.3 || power > 0)) S.elapsed += dt;
   if (S.sport==='run' && !S.frozen){ const inc = S.beltIncline ?? (S.wkIncline ?? (S.runMode==='fixed'?S.incFixed:Math.max(0,grade*S.incScale))); S.runAlt += S.v*dt*inc/100; }
   updateWorkout(dt);
@@ -1522,10 +1593,11 @@ function frame(){
     if (S.bikeSpeed!=null && S.connected && S.sport==='ride'){ $('bikeSpd').classList.remove('hidden-el'); $('bikeSpd').textContent = `KICKR says ${S.bikeSpeed.toFixed(1)}`; }
     if (S.hr){ $('tHr').classList.remove('hidden-el'); $('mHr').innerHTML = `${S.hr}<small>bpm</small>`; }
     $('banner').style.opacity = (S.connected || S.simulate) ? 0 : 1;
-    updateWorkoutHud();
+    updateWorkoutHud(); autoShots();
   }
   W.active ? drawWorkoutStrip() : drawProfile();
   renderer.render(scene, camera);
+  if (pendingShot){ takeShot(pendingShot); pendingShot = null; }
   requestAnimationFrame(frame);
 }
 frame();
