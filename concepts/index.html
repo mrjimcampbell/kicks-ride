@@ -329,6 +329,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 const MOODS = {
   highlands: { exposure:1.0, fog:['#a9b0b4',70,1900], sky:['#6f7d8c','#c9cbc8','#f3dcb8'], sunDir:[0.75,0.16,-0.64], hemi:['#d5dbe0','#5a5040',1.25], sun:['#ffe2bf',1.6], treeL:0.8, bloom:0.18,
     single:true, mountains:true, moor:true, loch:true, pines:true, rocks:true },
@@ -338,6 +339,7 @@ const MOODS = {
 };
 const MOOD = MOODS[new URLSearchParams(location.search).get('mood') || 'highlands'];
 const EXP = { on:true, speed:25, yaw:0, yawT:0, pitch:0 };
+const treeMats = [], modelParts = {};
 
 
 /* =========================================================
@@ -882,13 +884,14 @@ const HALF = MOOD.single ? 1.9 : 3.4;
     if (MOOD.sea && isOutside(x,z)) continue;
     const k = 0.65 + rnd()*0.9;
     ps.set(x, terrainH(x,z)-0.2, z); q.setFromAxisAngle(new THREE.Vector3(0,1,0), rnd()*6.28); sc.set(k, k*(0.85+rnd()*0.4), k);
-    m.compose(ps,q,sc); trunks.setMatrixAt(n,m); crowns.setMatrixAt(n,m);
+    m.compose(ps,q,sc); trunks.setMatrixAt(n,m); crowns.setMatrixAt(n,m); treeMats.push(m.clone());
     MOOD.pines ? c.setHSL(0.36+rnd()*0.06, 0.22+rnd()*0.1, 0.17+rnd()*0.06) : c.setHSL(0.22+rnd()*0.08, 0.25+rnd()*0.12, (0.30+rnd()*0.12)*MOOD.treeL); crowns.setColorAt(n,c);
     n++;
   }
   trunks.count = crowns.count = n;
   crowns.castShadow = trunks.castShadow = true;
   scene.add(trunks, crowns);
+  scene.userData.trees = [trunks, crowns];
 }
 function mulberry(a){ return ()=>{ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
 
@@ -1673,6 +1676,8 @@ function frame(){
   wheels.forEach(w => w.rotation.x += S.v*dt/0.34);
   crank += (S.cadence/60)*Math.PI*2*dt;
   bike.userData.legs.forEach((l,i)=>{ l.position.y = 0.75 + Math.sin(crank + i*Math.PI)*0.06; });
+  if (modelParts.crank) modelParts.crank.rotation.x = -crank;
+  if (modelParts.rLegs) modelParts.rLegs.forEach((l,i)=>{ l.rotation.x = Math.sin(crank + i*Math.PI)*0.22; });
 
   runner.position.copy(base); runner.lookAt(tmpB.copy(base).add(tmpA.set(t.x,0,t.z)));
   side.set(-t.z,0,t.x).normalize();
@@ -1777,6 +1782,47 @@ frame();
   $('gl').addEventListener('pointerup', () => drag = null);
   setInterval(() => { $('expSpd').textContent = EXP.speed; $('expDist').textContent = (wrap(S.dist)/1000).toFixed(2); const g = gradeAt(S.dist); $('expGrade').textContent = `${g.toFixed(1)}%`; }, 200);
 }
+/* ---------- Blender models (rider, runner, Scots pines) ---------- */
+const modelBase = location.pathname.includes('/concepts') ? '../models/' : 'models/';
+const loader = new GLTFLoader();
+const loadGLB = f => new Promise((res, rej) => loader.load(modelBase + f, g => res(g.scene), undefined, rej));
+const shade = root => root.traverse(o => { if (o.isMesh){ o.castShadow = true; o.receiveShadow = true; } });
+loadGLB('rider.glb').then(g => {
+  shade(g); bike.children.forEach(c => c.visible = false); bike.add(g);
+  const spin = [];
+  for (const nm of ['Wheel_F','Wheel_R']){ const w = g.getObjectByName(nm); if (!w) continue;
+    const piv = new THREE.Group(); piv.position.copy(w.position); w.parent.add(piv); piv.add(w); w.position.set(0,0,0); spin.push(piv); }
+  wheels.length = 0; wheels.push(...spin);
+  modelParts.crank = g.getObjectByName('Crank');
+  modelParts.rLegs = ['Rider_Leg_L','Rider_Leg_R'].map(n => g.getObjectByName(n)).filter(Boolean);
+  bike.userData.legs = [];   // placeholder legs no longer drive anything
+  log('Rider model loaded');
+}).catch(() => {});
+loadGLB('runner.glb').then(g => {
+  shade(g); runner.children.forEach(c => c.visible = false); runner.add(g);
+  runner.userData.legs = ['Runner_Leg_L','Runner_Leg_R'].map(n => g.getObjectByName(n)).filter(Boolean);
+  runner.userData.arms = ['Runner_Arm_L','Runner_Arm_R'].map(n => g.getObjectByName(n)).filter(Boolean);
+  log('Runner model loaded');
+}).catch(() => {});
+if (MOOD.pines) loadGLB('scots-pines.glb').then(g => {
+  shade(g); g.updateMatrixWorld(true);
+  const variants = ['ScotsPine_1','ScotsPine_2','ScotsPine_3'].map(n => g.getObjectByName(n)).filter(Boolean);
+  const per = variants.map(() => []);
+  treeMats.forEach((m, i) => per[i % variants.length].push(m));
+  const inv = new THREE.Matrix4(), tmpM = new THREE.Matrix4();
+  variants.forEach((v, vi) => {
+    inv.copy(v.matrixWorld).invert();
+    v.traverse(o => {
+      if (!o.isMesh) return;
+      const local = new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld);   // mesh relative to its tree's root
+      const im = new THREE.InstancedMesh(o.geometry, o.material, per[vi].length);
+      per[vi].forEach((m, k) => { tmpM.copy(m).multiply(local); tmpM.scale(new THREE.Vector3(0.85,0.85,0.85)); im.setMatrixAt(k, tmpM); });
+      im.castShadow = true; im.receiveShadow = true; scene.add(im);
+    });
+  });
+  scene.userData.trees.forEach(t => t.visible = false);
+  log('Scots pines loaded');
+}).catch(() => {});
 window.__snap = () => camLook.set(0,0,0); window.__ride = S; window.__trainer = trainer; window.__W = W; window.__tcx = () => buildTCX(); window.__track = () => track; // handy for debugging in the console
 </script>
 </body>
