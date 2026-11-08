@@ -190,7 +190,8 @@
 
   <section class="ride-only">
     <h2>Rider</h2>
-    <div class="row"><label>Rider + bike weight</label><input type="number" id="mass" value="83" min="40" max="160"> kg</div>
+    <div class="row"><label>Your weight</label><input type="number" id="mass" value="69" min="30" max="150" step="0.5"> kg</div>
+    <div class="keys">Plus 8 kg for a virtual road bike. Total weight sets how fast you climb and accelerate.</div>
   </section>
 
   <section class="run-only">
@@ -301,7 +302,7 @@ const S = {
   runMode:'course', incScale:1, incFixed:1, wkIncline:null, frozen:false, runAlt:0,
   v:0, dist:0, elapsed:0,
   mode:'sim', difficulty:1, erg:150, manualGrade:0,
-  mass:83, cda:0.32, crr:0.004,
+  mass:77, cda:0.32, crr:0.004,
   view:'fp',
 };
 const $ = id => document.getElementById(id);
@@ -921,7 +922,10 @@ $('simPower').oninput = e => { S.simPower=+e.target.value; $('simPowerOut').text
 $('diff').oninput = e => { S.difficulty=e.target.value/100; $('diffOut').textContent=`${e.target.value}%`; };
 $('erg').oninput  = e => { S.erg=+e.target.value; $('ergOut').textContent=`${S.erg} W`; };
 $('man').oninput  = e => { S.manualGrade=+e.target.value; $('manOut').textContent=`${S.manualGrade.toFixed(1)}%`; };
-$('mass').onchange = e => { S.mass = Math.min(160, Math.max(40, +e.target.value||83)); };
+const BIKE_KG = 8;
+function setRiderKg(kg){ kg = Math.min(150, Math.max(30, +kg || 69)); S.mass = kg + BIKE_KG; $('mass').value = kg; try{ localStorage.setItem('kr.riderKg', JSON.stringify(kg)); }catch{} }
+$('mass').onchange = e => setRiderKg(e.target.value);
+try{ setRiderKg(JSON.parse(localStorage.getItem('kr.riderKg')) ?? 69); }catch{ setRiderKg(69); }
 $('modeSeg').onclick = e => {
   const m = e.target.dataset.mode; if (!m) return; S.mode = m;
   [...$('modeSeg').children].forEach(b=>b.classList.toggle('on', b.dataset.mode===m));
