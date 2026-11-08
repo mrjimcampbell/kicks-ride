@@ -162,6 +162,8 @@
   <section>
     <h2>Session</h2>
     <div class="row"><button id="openWk" style="flex:1">Workouts…</button><button id="finish" style="flex:1">Finish &amp; save</button></div>
+    <button id="stravaBtn" style="width:100%;margin-top:4px">Connect Strava</button>
+    <div class="row" id="relayRow" style="margin-top:8px"><label>Relay</label><input class="txt wide" id="relayUrl" placeholder="https://…workers.dev" style="flex:3"></div>
   </section>
 
   <section class="ride-only">
@@ -276,6 +278,8 @@
   <h3 id="doneTitle">Session</h3>
   <div class="keys" id="doneSub"></div>
   <div class="stats" id="doneStats"></div>
+  <button class="primary hidden-el" id="uploadStrava" style="margin-bottom:8px">Upload to Strava</button>
+  <div id="upStatus" class="keys" style="margin-bottom:10px"></div>
   <div class="row" style="flex-wrap:wrap">
     <button class="primary" id="saveTcx" style="flex:2;width:auto">Save file for Strava</button>
     <button id="openStrava" style="flex:1">Open Strava upload</button>
@@ -1067,6 +1071,7 @@ function openDone(){
   $('doneTitle').textContent = W.lastName ? W.lastName : (run ? 'Treadmill run' : 'Indoor ride');
   $('doneSub').textContent = n ? `${n} seconds recorded` : 'Nothing recorded yet. Ride or run for a bit first.';
   $('doneStats').innerHTML = st.map(([k,v])=>`<div><span>${k}</span><b>${v}</b></div>`).join('');
+  $('upStatus').textContent = ''; stravaUI();
   $('doneModal').classList.remove('hidden-el');
 }
 $('finish').onclick = () => { if (W.active) finishWorkout(false); openDone(); };
@@ -1079,6 +1084,77 @@ $('saveTcx').onclick = async () => {
   await saveFile(`${S.sport==='run'?'run':'ride'}-${stamp}.tcx`, x, 'application/vnd.garmin.tcx+xml');
   log('Activity file saved');
 };
+
+/* ---------- Strava: connect + direct upload via the relay ---------- */
+const STRAVA_ID = 295158, REDIRECT = 'https://mrjimcampbell.github.io/kicks-ride/';
+const DEFAULT_RELAY = '';
+const relay = () => (store.get('relay', '') || DEFAULT_RELAY).replace(/\/+$/,'');
+const tok = { get: () => store.get('strava', null), set: v => store.set('strava', v) };
+function stravaUI(){
+  const t = tok.get();
+  $('stravaBtn').textContent = t ? `Strava connected${t.name ? ' · '+t.name : ''} (tap to disconnect)` : 'Connect Strava';
+  $('relayRow').classList.toggle('hidden-el', !!(t && relay()));
+  $('relayUrl').value = relay();
+  $('uploadStrava').classList.toggle('hidden-el', !t);
+  $('saveTcx').classList.toggle('primary', !t);
+}
+$('relayUrl').onchange = e => { store.set('relay', e.target.value.trim()); stravaUI(); };
+$('stravaBtn').onclick = () => {
+  if (tok.get()){ tok.set(null); log('Strava disconnected'); stravaUI(); return; }
+  if (!relay()){ log('Paste the Strava relay address first'); $('relayRow').classList.remove('hidden-el'); $('relayUrl').focus(); return; }
+  if (location.origin + location.pathname !== REDIRECT){ log(`Connect Strava from ${REDIRECT}`); return; }
+  location.href = `https://www.strava.com/oauth/authorize?client_id=${STRAVA_ID}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT)}&approval_prompt=auto&scope=activity:write`;
+};
+async function relayJSON(path, opts){
+  const r = await fetch(relay() + path, opts); let d = {};
+  try{ d = await r.json(); }catch{}
+  if (!r.ok) throw new Error(d.message || d.error || (d.errors && JSON.stringify(d.errors)) || `HTTP ${r.status}`);
+  return d;
+}
+(async () => {
+  const q = new URLSearchParams(location.search);
+  if (!q.get('code') && !q.get('error')) return;
+  history.replaceState(null, '', location.pathname);
+  if (q.get('error')){ log('Strava connection cancelled'); return; }
+  if (!(q.get('scope') || '').includes('activity:write')){ log('Strava: tick “upload activities” when connecting'); return; }
+  try{
+    const d = await relayJSON('/token', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ code:q.get('code') }) });
+    tok.set({ access:d.access_token, refresh:d.refresh_token, exp:d.expires_at, name:d.athlete && d.athlete.firstname });
+    log('Strava connected');
+  }catch(e){ log('Strava connect failed: ' + errMsg(e)); }
+  stravaUI();
+})();
+async function accessToken(){
+  let t = tok.get(); if (!t) throw new Error('Not connected to Strava');
+  if (Date.now()/1000 > t.exp - 120){
+    const d = await relayJSON('/refresh', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ refresh_token:t.refresh }) });
+    t = { ...t, access:d.access_token, refresh:d.refresh_token, exp:d.expires_at }; tok.set(t);
+  }
+  return t.access;
+}
+$('uploadStrava').onclick = async () => {
+  const x = buildTCX(); const st = $('upStatus');
+  if (!x){ st.textContent = 'Nothing recorded yet'; return; }
+  $('uploadStrava').disabled = true; st.textContent = 'Uploading…';
+  try{
+    const fd = new FormData();
+    fd.append('file', new Blob([x], { type:'application/xml' }), 'activity.tcx');
+    fd.append('data_type', 'tcx'); fd.append('trainer', '1');
+    fd.append('name', $('doneTitle').textContent);
+    fd.append('external_id', `kicks-ride-${track[0].t}`);
+    const auth = { Authorization: 'Bearer ' + await accessToken() };
+    let d = await relayJSON('/upload', { method:'POST', headers:auth, body:fd });
+    for (let i=0; i<20 && !d.activity_id && !d.error; i++){
+      await new Promise(r=>setTimeout(r, 2000)); st.textContent = d.status || 'Processing…';
+      d = await relayJSON(`/upload/${d.id}`, { headers:auth });
+    }
+    if (d.error) throw new Error(d.error);
+    if (d.activity_id){ st.innerHTML = `Uploaded ✓ <a href="https://www.strava.com/activities/${d.activity_id}" target="_blank" style="color:var(--accent)">View on Strava</a>`; log('Uploaded to Strava'); }
+    else st.textContent = 'Uploaded. Strava is still processing it.';
+  }catch(e){ st.textContent = 'Upload failed: ' + errMsg(e); log('Strava upload failed: ' + errMsg(e)); }
+  $('uploadStrava').disabled = false;
+};
+stravaUI();
 
 /* =========================================================
    WORKOUTS — model, library, builder
