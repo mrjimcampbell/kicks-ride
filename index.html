@@ -1087,7 +1087,7 @@ $('saveTcx').onclick = async () => {
 
 /* ---------- Strava: connect + direct upload via the relay ---------- */
 const STRAVA_ID = 295158, REDIRECT = 'https://mrjimcampbell.github.io/kicks-ride/';
-const DEFAULT_RELAY = '';
+const DEFAULT_RELAY = 'https://kicks-ride-strava.jim-campbell.workers.dev';
 const relay = () => (store.get('relay', '') || DEFAULT_RELAY).replace(/\/+$/,'');
 const tok = { get: () => store.get('strava', null), set: v => store.set('strava', v) };
 function stravaUI(){
