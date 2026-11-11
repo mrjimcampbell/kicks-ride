@@ -1,0 +1,73 @@
+# XcodeGen spec — the source of truth for the Xcode project.
+# Regenerate after adding/removing files or targets:   cd apple && xcodegen
+# KicksRide.xcodeproj is generated and gitignored.
+name: KicksRide
+options:
+  bundleIdPrefix: com.mrjimcampbell
+  deploymentTarget:
+    iOS: "26.0"
+    tvOS: "26.0"
+  createIntermediateGroups: true
+configFiles:
+  Debug: Config/Shared.xcconfig
+  Release: Config/Shared.xcconfig
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+
+packages:
+  KicksCore:
+    path: Packages/KicksCore
+
+targets:
+  KicksRide:
+    type: application
+    platform: iOS
+    sources: [KicksRide]
+    dependencies:
+      - package: KicksCore
+        products: [KicksCore, KicksFTMS, KicksLink, KicksRecording]
+    info:
+      path: KicksRide/Info.plist
+      properties:
+        CFBundleDisplayName: Kicks Ride
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        NSBluetoothAlwaysUsageDescription: Kicks Ride connects to your treadmill, bike and heart-rate strap.
+        NSLocalNetworkUsageDescription: Kicks Ride sends your live run to the Apple TV display.
+        NSBonjourServices: [_kicksride._tcp]
+        # Keep the treadmill connection alive when the phone is locked / you're watching YouTube.
+        UIBackgroundModes: [bluetooth-central]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mrjimcampbell.kicksride
+        TARGETED_DEVICE_FAMILY: "1"
+
+  KicksRideTV:
+    type: application
+    platform: tvOS
+    sources: [KicksRideTV]
+    dependencies:
+      - package: KicksCore
+        products: [KicksCore, KicksLink]
+    info:
+      path: KicksRideTV/Info.plist
+      properties:
+        CFBundleDisplayName: Kicks Ride
+        UILaunchScreen: {}
+        NSLocalNetworkUsageDescription: Kicks Ride receives your live run from the iPhone.
+        NSBonjourServices: [_kicksride._tcp]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mrjimcampbell.kicksride.tv
+
+schemes:
+  KicksRide:
+    build: { targets: { KicksRide: all } }
+    run: { config: Debug }
+  KicksRideTV:
+    build: { targets: { KicksRideTV: all } }
+    run: { config: Debug }

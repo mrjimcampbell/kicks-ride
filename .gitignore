@@ -1,3 +1,12 @@
 assets/
 *.blend1
 .DS_Store
+
+# Native apps
+apple/KicksRide.xcodeproj/
+apple/Config/Local.xcconfig
+apple/**/Info.plist
+.build/
+DerivedData/
+xcuserdata/
+.swiftpm/

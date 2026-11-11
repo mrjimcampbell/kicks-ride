@@ -1,0 +1,2 @@
+// Copy to Local.xcconfig (gitignored) and set your team.
+DEVELOPMENT_TEAM = XXXXXXXXXX

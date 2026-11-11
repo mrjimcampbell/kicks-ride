@@ -1,0 +1,4 @@
+// Committed. Pulls in per-machine settings (signing team) from Local.xcconfig, which is
+// gitignored. Copy Local.xcconfig.example → Local.xcconfig and fill in your team ID
+// (Xcode → Settings → Accounts → your Personal Team).
+#include? "Local.xcconfig"
