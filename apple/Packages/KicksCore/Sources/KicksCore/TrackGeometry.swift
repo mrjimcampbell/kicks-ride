@@ -45,6 +45,21 @@ public struct TrackGeometry: Sendable, Equatable {
         2 * straightLength + 2 * .pi * runningRadius(lane: lane)
     }
 
+    /// Middle of a lane (1-based), measured from the track centre's bend axis.
+    public func laneCentreRadius(lane: Int) -> Double {
+        kerbRadius + (Double(lane) - 0.5) * laneWidth
+    }
+
+    /// Where to *draw* the runner: the same progress round the lap as `pose`, but shifted out
+    /// from the measuring line (0.30 m off the kerb) to the middle of the lane, so they look
+    /// centred. Distance is still counted along the measuring line.
+    public func displayPose(distance: Double, lane: Int = 1) -> (x: Double, y: Double, heading: Double) {
+        let p = pose(distance: distance, lane: lane)
+        let shift = laneCentreRadius(lane: lane) - runningRadius(lane: lane)
+        // Running anticlockwise, "outwards" is to the runner's right: (sin h, -cos h).
+        return (p.x + shift * sin(p.heading), p.y - shift * cos(p.heading), p.heading)
+    }
+
     /// Position and heading for a distance run.
     /// Every `nominalLap` metres of treadmill distance is one lap of the chosen lane, so on a
     /// spec track lane 1 is 1:1, and other lanes / non-spec models are scaled to fit.

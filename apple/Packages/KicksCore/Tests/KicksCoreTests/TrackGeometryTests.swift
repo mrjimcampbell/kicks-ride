@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 @testable import KicksCore
 @testable import KicksLink
 
@@ -34,6 +35,17 @@ import Testing
         let start = a.pose(distance: 0), lap = a.pose(distance: 400)
         #expect(abs(start.x - lap.x) < 1e-6 && abs(start.y - lap.y) < 1e-6)
         #expect(abs(a.pose(distance: 200).y - a.runningRadius(lane: 1)) < 1e-6)
+    }
+
+    @Test func displayPoseSitsMidLane() {
+        let a = TrackGeometry.jg3dArena
+        let mid = a.laneCentreRadius(lane: 1)          // kerb + 0.685 m
+        // Home straight (y < 0), back straight (y > 0) and the middle of a bend.
+        #expect(abs(a.displayPose(distance: 10).y + mid) < 1e-9)
+        #expect(abs(a.displayPose(distance: 200).y - mid) < 1e-9)
+        let quarter = a.straightLength / 2 + .pi * a.runningRadius(lane: 1) / 2
+        let p = a.displayPose(distance: quarter * 400 / a.lapLength(lane: 1))
+        #expect(abs(hypot(p.x - a.straightLength / 2, p.y) - mid) < 1e-6)
     }
 
     @Test func halfLapIsOnBackStraight() {

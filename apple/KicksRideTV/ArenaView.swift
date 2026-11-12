@@ -11,6 +11,7 @@ import KicksCore
 /// Track plane coordinates: RealityKit x = track x, RealityKit z = -track y, surface at y = 0.
 struct ArenaView: View {
     let session: TVSession
+    let cameraRig: CameraRig
 
     /// Arena track centre and surface height in the USD scene's coordinates (Blender x, z, -y),
     /// measured from the inner kerb of Track_Lanes in Blender.
@@ -46,7 +47,6 @@ struct ArenaView: View {
             root.addChild(runner)
 
             let camera = PerspectiveCamera()
-            camera.camera.fieldOfViewInDegrees = 50
             root.addChild(camera)
 
             let sun = DirectionalLight()
@@ -58,15 +58,14 @@ struct ArenaView: View {
 
             _ = content.subscribe(to: SceneEvents.Update.self) { event in
                 session.tick(event.deltaTime)
-                let p = track.pose(distance: session.state.distance)
+                // Distance is counted along lane 1's measuring line, but the runner is drawn
+                // mid-lane so it looks centred.
+                let p = track.displayPose(distance: session.state.distance)
                 let feet = SIMD3<Float>(Float(p.x), 0, Float(-p.y))
-                let forward = SIMD3<Float>(Float(cos(p.heading)), 0, Float(-sin(p.heading)))
                 runner.position = feet
                 runner.orientation = simd_quatf(angle: Float(p.heading), axis: [0, 1, 0])
                 animator?.update(speed: session.state.isPaused ? 0 : session.state.speedKmh / 3.6, dt: event.deltaTime)
-                // Chase camera: behind and above, looking just ahead of the runner's waist.
-                let waist = feet + [0, 0.9, 0]
-                camera.look(at: waist + forward * 4, from: waist - forward * 7 + [0, 3, 0], relativeTo: nil)
+                cameraRig.update(camera: camera, runner: runner, feet: feet, heading: Float(p.heading), dt: event.deltaTime)
             }
         }
     }
