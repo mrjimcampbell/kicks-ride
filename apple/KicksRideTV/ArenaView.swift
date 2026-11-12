@@ -12,6 +12,7 @@ import KicksCore
 struct ArenaView: View {
     let session: TVSession
     let cameraRig: CameraRig
+    let skyRig: SkyRig
 
     /// Arena track centre and surface height in the USD scene's coordinates (Blender x, z, -y),
     /// measured from the inner kerb of Track_Lanes in Blender.
@@ -47,12 +48,13 @@ struct ArenaView: View {
             root.addChild(runner)
 
             let camera = PerspectiveCamera()
+            camera.camera.far = 2000
             root.addChild(camera)
 
-            let sun = DirectionalLight()
-            sun.light.intensity = 4000
-            sun.look(at: .zero, from: [30, 60, 20], relativeTo: nil)
-            root.addChild(sun)
+            // Sky, sun, image-based light and floodlights (look-dev presets).
+            root.addChild(skyRig.root)
+            skyRig.addReceivers(to: root)
+            await skyRig.apply()
 
             content.add(root)
 
@@ -66,6 +68,7 @@ struct ArenaView: View {
                 runner.orientation = simd_quatf(angle: Float(p.heading), axis: [0, 1, 0])
                 animator?.update(speed: session.state.isPaused ? 0 : session.state.speedKmh / 3.6, dt: event.deltaTime)
                 cameraRig.update(camera: camera, runner: runner, feet: feet, heading: Float(p.heading), dt: event.deltaTime)
+                skyRig.follow(camera: camera)
             }
         }
     }

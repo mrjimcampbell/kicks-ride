@@ -65,12 +65,14 @@ struct TVRootView: View {
     @State private var session = TVSession()
     @State private var cameraRig = CameraRig()
     @State private var link = LinkClient()
+    @State private var skyRig = SkyRig()
+    @AppStorage("kr.sky") private var savedSky = SkyPreset.midday.rawValue
     @AppStorage("kr.camera") private var savedCamera = CameraMode.standard.rawValue
 
     var body: some View {
         // HUD at the top, over the sky, so it never covers the runner.
         ZStack(alignment: .top) {
-            ArenaView(session: session, cameraRig: cameraRig)
+            ArenaView(session: session, cameraRig: cameraRig, skyRig: skyRig)
             HStack(spacing: 80) {
                 hud(Format.pace(session.state.paceSecondsPerKm), "min/km")
                 hud(Format.distanceKm(session.state.distance), "km")
@@ -91,7 +93,7 @@ struct TVRootView: View {
                     .padding(.bottom, 160)
             }
 
-            if let banner = cameraRig.banner {
+            if let banner = cameraRig.banner ?? skyRig.banner {
                 Text(banner)
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(.white)
@@ -103,6 +105,7 @@ struct TVRootView: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: cameraRig.banner)
+        .animation(.easeInOut(duration: 0.3), value: skyRig.banner)
         .ignoresSafeArea()
         // Siri Remote: swipe or click left/right to change camera.
         .focusable()
@@ -110,8 +113,9 @@ struct TVRootView: View {
             switch direction {
             case .left: cameraRig.previous()
             case .right: cameraRig.next()
-            case .up: if session.running { link.send(.speedUp) }
-            case .down: if session.running { link.send(.speedDown) }
+            // Up/down: belt speed during a run; sky preset (look-dev) while idle.
+            case .up: if session.running { link.send(.speedUp) } else { skyRig.previous() }
+            case .down: if session.running { link.send(.speedDown) } else { skyRig.next() }
             default: break
             }
         }
@@ -119,6 +123,7 @@ struct TVRootView: View {
             if session.running { link.send(session.state.isPaused ? .resume : .pause) }
         }
         .onChange(of: cameraRig.mode) { savedCamera = cameraRig.mode.rawValue }
+        .onChange(of: skyRig.preset) { savedSky = skyRig.preset.rawValue }
         .onAppear {
             configureCamera()
             link.onMessage = { session.receive($0) }
@@ -135,6 +140,11 @@ struct TVRootView: View {
             cameraRig.mode = CameraMode(rawValue: savedCamera) ?? .standard
         }
         cameraRig.tour = args.contains("-kr-camera-tour")
+        if let i = args.firstIndex(of: "-kr-sky"), i + 1 < args.count, let s = SkyPreset(rawValue: args[i + 1]) {
+            skyRig.preset = s
+        } else {
+            skyRig.preset = SkyPreset(rawValue: savedSky) ?? .midday
+        }
     }
 
     private func hud(_ value: String, _ unit: String) -> some View {

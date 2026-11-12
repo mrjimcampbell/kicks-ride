@@ -57,3 +57,8 @@ be faked (fog via material/cards), particle budget for rain.
 ## 4. Later
 - Local weather + time of day driving the preset (WeatherKit on the TV).
 - The TV front end picks the preset; phone can too.
+
+## Status
+- 12 Nov: test rig built (see CLAUDE.md "Sky rig"). HDRI backdrops actually sit quite well
+  with the arena from the chase camera; the horizon line of the pure-sky HDRIs is the giveaway
+  (no ground/hills), which the baked-horizon idea would fix. Night with floodlights works.

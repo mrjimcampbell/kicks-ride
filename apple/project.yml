@@ -64,6 +64,7 @@ targets:
       # Copy gitignored built assets into the app (never committed):
       #  - the paid arena (tools/arena/build_arena.py), the .reality compiled for this platform
       #  - the runner clips (tools/runner/build_runner.py)
+      #  - the look-dev skies (tools/sky/fetch_skies.sh, Poly Haven CC0)
       # Missing → the app falls back to a placeholder track / runner.
       - name: Copy built assets (if built)
         basedOnDependencyAnalysis: false
@@ -77,6 +78,10 @@ targets:
           if ls "$ASSETS"/runner/build/runner_*.usdz >/dev/null 2>&1; then
             cp "$ASSETS"/runner/build/runner_*.usdz "$RES/" && echo "Runner: copied clips"
           else echo "warning: Runner not built - using placeholder box"; fi
+          rm -f "$RES"/sky_*
+          if ls "$ASSETS"/sky/build/sky_* >/dev/null 2>&1; then
+            cp "$ASSETS"/sky/build/sky_* "$RES/" && echo "Sky: copied presets"
+          else echo "warning: Skies not fetched (tools/sky/fetch_skies.sh) - default lighting"; fi
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mrjimcampbell.kicksride.tv
