@@ -6,12 +6,13 @@ set -e
 cd "${0:A:h}/../.."
 OUT=assets/sky/build
 mkdir -p $OUT
-# preset id → Poly Haven asset (keep in sync with SkyPreset in KicksRideTV/SkyRig.swift)
+# sky id → Poly Haven asset (keep in sync with TimeOfDay / Weather in KicksRideTV/SkyRig.swift).
+# Delete assets/sky/build/sky_<id>.* to re-fetch after changing an entry.
 typeset -A SKIES=(
   midday   kloofendal_48d_partly_cloudy_puresky
-  morning  autumn_field_puresky
-  golden   evening_road_01_puresky
-  dusk     belfast_sunset_puresky
+  morning  kiara_1_dawn
+  golden   spruit_sunrise
+  dusk     sunset_fairway
   overcast overcast_soil_puresky
   night    kloppenheim_02
 )

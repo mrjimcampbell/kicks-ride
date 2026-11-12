@@ -66,7 +66,8 @@ struct TVRootView: View {
     @State private var cameraRig = CameraRig()
     @State private var link = LinkClient()
     @State private var skyRig = SkyRig()
-    @AppStorage("kr.sky") private var savedSky = SkyPreset.midday.rawValue
+    @AppStorage("kr.sky") private var savedSky = TimeOfDay.night.rawValue
+    @AppStorage("kr.weather") private var savedWeather = Weather.clear.rawValue
     @AppStorage("kr.camera") private var savedCamera = CameraMode.standard.rawValue
 
     var body: some View {
@@ -113,9 +114,9 @@ struct TVRootView: View {
             switch direction {
             case .left: cameraRig.previous()
             case .right: cameraRig.next()
-            // Up/down: belt speed during a run; sky preset (look-dev) while idle.
-            case .up: if session.running { link.send(.speedUp) } else { skyRig.previous() }
-            case .down: if session.running { link.send(.speedDown) } else { skyRig.next() }
+            // Up/down: belt speed during a run; time of day (look-dev) while idle.
+            case .up: if session.running { link.send(.speedUp) } else { skyRig.previousTime() }
+            case .down: if session.running { link.send(.speedDown) } else { skyRig.nextTime() }
             default: break
             }
         }
@@ -123,7 +124,10 @@ struct TVRootView: View {
             if session.running { link.send(session.state.isPaused ? .resume : .pause) }
         }
         .onChange(of: cameraRig.mode) { savedCamera = cameraRig.mode.rawValue }
-        .onChange(of: skyRig.preset) { savedSky = skyRig.preset.rawValue }
+        .onChange(of: skyRig.time) { savedSky = skyRig.time.rawValue }
+        .onChange(of: skyRig.weather) { savedWeather = skyRig.weather.rawValue }
+        // Click while idle: next weather.
+        .onTapGesture { if !session.running { skyRig.nextWeather() } }
         .onAppear {
             configureCamera()
             link.onMessage = { session.receive($0) }
@@ -140,11 +144,11 @@ struct TVRootView: View {
             cameraRig.mode = CameraMode(rawValue: savedCamera) ?? .standard
         }
         cameraRig.tour = args.contains("-kr-camera-tour")
-        if let i = args.firstIndex(of: "-kr-sky"), i + 1 < args.count, let s = SkyPreset(rawValue: args[i + 1]) {
-            skyRig.preset = s
-        } else {
-            skyRig.preset = SkyPreset(rawValue: savedSky) ?? .midday
+        func arg(_ name: String) -> String? {
+            args.firstIndex(of: name).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil }
         }
+        skyRig.time = arg("-kr-sky").flatMap(TimeOfDay.init) ?? TimeOfDay(rawValue: savedSky) ?? .night
+        skyRig.weather = arg("-kr-weather").flatMap(Weather.init) ?? Weather(rawValue: savedWeather) ?? .clear
     }
 
     private func hud(_ value: String, _ unit: String) -> some View {
