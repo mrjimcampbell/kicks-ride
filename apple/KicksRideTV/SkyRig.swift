@@ -98,7 +98,7 @@ final class SkyRig {
         root.addChild(dome)
         root.addChild(ibl)
         // tvOS ignores the old maximumDistance property; the projection must be set this way.
-        sun.shadow = DirectionalLightComponent.Shadow(shadowProjection: .automatic(maximumDistance: 150), depthBias: 1)
+        sun.shadow = DirectionalLightComponent.Shadow(shadowProjection: .fixed(zNear: 1, zFar: 600, orthographicScale: 140), depthBias: 1)
         root.addChild(sun)
 
         let glowTexture = try? TextureResource(image: Self.radialGlowImage(), options: .init(semantic: .color))
@@ -152,12 +152,24 @@ final class SkyRig {
 
         // Fog: camera-centred open cylinders; each hides a little more of what lies beyond it,
         // so distant things fade (in steps — a cheap stand-in for real distance fog).
-        for r: Float in [12, 18, 26, 38, 55, 80, 115, 165, 240, 350] {
-            let shell = ModelEntity(mesh: Self.shellMesh(radius: r, height: 70), materials: [UnlitMaterial()])
+        // Fog: two mist bands *outside* the stadium (it reaches ~100 m from the centre), fixed
+        // to the track rather than the camera, so they never cut through the arena. They fade
+        // the far horizon into the sky; the stadium itself stays clear (no real fog in RealityKit).
+        for r: Float in [150, 260] {
+            let shell = ModelEntity(mesh: Self.shellMesh(radius: r, height: 90), materials: [UnlitMaterial()])
             fogShells.append(shell)
             fog.addChild(shell)
         }
         root.addChild(fog)
+    }
+
+    /// Call once the arena and runner are in the scene: hooks up lighting, finds the track,
+    /// and re-applies the current look (it may have been applied before the arena loaded).
+    func attach(to scene: Entity, track: TrackGeometry) async {
+        self.track = track
+        addReceivers(to: scene)
+        applied = nil
+        await apply()
     }
 
     /// Every model in the scene lights from our HDRI rather than RealityKit's default. Also
@@ -196,7 +208,6 @@ final class SkyRig {
         dome.position = p
         rain.position = p + [0, 14, 0]
         splashes.position = [p.x, 0.03, p.z]
-        fog.position = [p.x, 0, p.z]
     }
 
     func nextTime() { time = Self.step(time, 1) }
@@ -222,19 +233,17 @@ final class SkyRig {
     private func buildPuddles() {
         guard puddles.children.isEmpty, let track else { return }
         var rng = SplitMix(seed: 7)
-        let tex = try? TextureResource(image: Self.puddleImage(), options: .init(semantic: .raw))
         var m = PhysicallyBasedMaterial()
         m.baseColor = .init(tint: .init(white: 0.05, alpha: 1))
         m.roughness = .init(floatLiteral: 0.02)
         m.metallic = .init(floatLiteral: 0)
         m.specular = .init(floatLiteral: 1)
-        if let tex { m.blending = .transparent(opacity: .init(scale: 0.85, texture: .init(tex))) }
         for _ in 0..<70 {
             let d = Double(rng.next() % 400)
             let lane = 1 + Int(rng.next() % 8)
             let p = track.displayPose(distance: d, lane: lane)
-            let w = 0.6 + Float(rng.next() % 100) / 100 * 1.6
-            let puddle = ModelEntity(mesh: .generatePlane(width: w, depth: w * 0.7), materials: [m])
+            let w = 1.0 + Float(rng.next() % 100) / 100 * 2.2
+            let puddle = ModelEntity(mesh: Self.blobMesh(size: w, seed: rng.next()), materials: [m])
             puddle.position = [Float(p.x), 0.006, Float(-p.y)]
             puddle.orientation = simd_quatf(angle: Float(rng.next() % 628) / 100, axis: [0, 1, 0])
             puddle.components.set(ImageBasedLightReceiverComponent(imageBasedLight: ibl))
@@ -269,6 +278,7 @@ final class SkyRig {
             print("SkyRig: sky_\(file).hdr missing — run tools/sky/fetch_skies.sh")
         }
         var material = UnlitMaterial()
+        let horizon = Bundle.main.url(forResource: "sky_\(file)", withExtension: "jpg").flatMap(Self.horizonColour) ?? [0.6, 0.6, 0.65]
         if let url = Bundle.main.url(forResource: "sky_\(file)", withExtension: "jpg"),
            let tex = await Self.loadBackdrop(url) {
             let g = CGFloat(gloom * (t.isDark ? 0.8 : 1))
@@ -288,31 +298,30 @@ final class SkyRig {
         sun.isEnabled = sunOn
         sun.light.intensity = look.sunLux
         sun.light.color = .init(red: CGFloat(sunColour.x), green: CGFloat(sunColour.y), blue: CGFloat(sunColour.z), alpha: 1)
-        sun.look(at: .zero, from: dir * 100, relativeTo: nil)
+        sun.look(at: .zero, from: dir * 300, relativeTo: nil)
 
         let lumens: Float = t.isDark ? 25_000_000 : 10_000_000
         for f in floods { f.isEnabled = t.lightsOn; f.light.intensity = t.lightsOn ? lumens : 0 }
         for g in glows { g.isEnabled = t.lightsOn }
         for f in lampFaces { f.isEnabled = t.lightsOn }
         for b in beams { b.isEnabled = t.lightsOn && (w == .rain || w == .fog) }
+        // Bloom stays attached: removing BloomComponent at runtime crashes RealityKit's
+        // renderer (tvOS 27.2, BloomFullscreenApplyNode). Daylight just raises the threshold.
         if #available(tvOS 27.0, *) {
-            if t.lightsOn {
-                root.components.set(BloomComponent(scope: .unbounded))
-                var o = BloomOptionsComponent()
-                o.strength = 0.6; o.threshold = 1.0; o.blurRadius = 24
-                root.components.set(o)
-            } else {
-                root.components.remove(BloomComponent.self)
-            }
+            if !root.components.has(BloomComponent.self) { root.components.set(BloomComponent(scope: .unbounded)) }
+            var o = BloomOptionsComponent()
+            o.strength = t.lightsOn ? 0.3 : 0
+            o.threshold = t.lightsOn ? 1.6 : 50
+            o.blurRadius = 20
+            root.components.set(o)
         }
 
         // Mist: thick in fog, a light haze in rain, none otherwise. Colour follows the light.
-        let mistAlpha: Float = w == .fog ? 0.17 : (w == .rain ? 0.045 : 0)   // per layer (10 layers)
+        let mistAlpha: Float = w == .fog ? 0.95 : (w == .rain ? 0.4 : 0)   // per band, at the ground
         fog.isEnabled = mistAlpha > 0
         if mistAlpha > 0 {
-            // Night mist is lighter than the sky: it glows in the floodlights.
-            let c: SIMD3<Float> = t.isDark ? [0.30, 0.31, 0.34] : t == .dusk ? [0.40, 0.36, 0.42]
-                : t == .golden ? [0.85, 0.75, 0.6] : [0.78, 0.80, 0.83]
+            // Mist takes the colour of the sky's own horizon, so it blends into the backdrop.
+            let c = horizon * Float(gloom)
             let tex = try? await TextureResource(image: Self.mistImage(colour: c, alpha: mistAlpha), options: .init(semantic: .color))
             var m = UnlitMaterial()
             if let tex { m.color = .init(tint: .white, texture: .init(tex)); m.blending = .transparent(opacity: .init(floatLiteral: 1)) }
@@ -341,23 +350,23 @@ final class SkyRig {
     private static func splashEmitter() -> ParticleEmitterComponent {
         var e = ParticleEmitterComponent()
         e.emitterShape = .box
-        e.emitterShapeSize = [40, 0.01, 40]
+        e.emitterShapeSize = [24, 0.01, 24]
         e.birthLocation = .volume
         e.birthDirection = .world
         e.emissionDirection = [0, 1, 0]
-        e.speed = 1.4
+        e.speed = 2.2
         e.speedVariation = 0.6
         e.fieldSimulationSpace = .global
         e.particlesInheritTransform = false
         var p = e.mainEmitter
-        p.birthRate = 5000
-        p.lifeSpan = 0.22
-        p.spreadingAngle = 0.7
-        p.size = 0.014
+        p.birthRate = 7000
+        p.lifeSpan = 0.3
+        p.spreadingAngle = 0.9
+        p.size = 0.035
         p.acceleration = [0, -9.8, 0]
         p.isLightingEnabled = false
         p.blendMode = .alpha
-        p.color = .constant(.single(UIColor(white: 0.9, alpha: 0.45)))
+        p.color = .constant(.single(UIColor(white: 0.95, alpha: 0.6)))
         e.mainEmitter = p
         return e
     }
@@ -365,23 +374,23 @@ final class SkyRig {
     private static func rainEmitter() -> ParticleEmitterComponent {
         var e = ParticleEmitterComponent()
         e.emitterShape = .box
-        e.emitterShapeSize = [60, 1, 60]
+        e.emitterShapeSize = [50, 1, 50]
         e.birthLocation = .volume
         e.birthDirection = .world
         e.emissionDirection = [0.05, -1, 0]
-        e.speed = 14
+        e.speed = 18
         e.speedVariation = 2
         e.fieldSimulationSpace = .global
         e.particlesInheritTransform = false
         var p = e.mainEmitter
-        p.birthRate = 9000
+        p.birthRate = 24000
         p.lifeSpan = 1.4
-        p.size = 0.02
-        p.stretchFactor = 6
+        p.size = 0.028
+        p.stretchFactor = 10
         p.acceleration = [0, -6, 0]
         p.isLightingEnabled = false
         p.blendMode = .alpha
-        p.color = .constant(.single(UIColor(white: 0.9, alpha: 0.5)))
+        p.color = .constant(.single(UIColor(white: 0.92, alpha: 0.6)))
         e.mainEmitter = p
         return e
     }
@@ -527,7 +536,7 @@ final class SkyRig {
     static func mistImage(colour c: SIMD3<Float>, alpha: Float) -> CGImage {
         rgbaImage(width: 4, height: 128) { _, y in
             let up = Float(y) / 127                           // image row 0 = top (v = 1)
-            let a = alpha * (0.45 + 0.55 * pow(up, 1.2))
+            let a = alpha * pow(up, 1.4)
             return [c.x * a, c.y * a, c.z * a, a]
         }
     }
@@ -565,6 +574,48 @@ final class SkyRig {
         let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
                             space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
         return ctx.makeImage()!
+    }
+
+    /// Average colour just above the horizon of an equirect panorama (sRGB 0…1).
+    static func horizonColour(_ url: URL) -> SIMD3<Float>? {
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let img = CGImageSourceCreateThumbnailAtIndex(src, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                                                     kCGImageSourceThumbnailMaxPixelSize: 256] as CFDictionary)
+        else { return nil }
+        let w = img.width, h = img.height
+        var px = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                  space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        ctx.draw(img, in: CGRect(x: 0, y: 0, width: w, height: h))
+        var sum = SIMD3<Float>(0, 0, 0), n: Float = 0
+        for y in Int(Double(h) * 0.44)..<Int(Double(h) * 0.49) {
+            for x in 0..<w {
+                let i = (y * w + x) * 4
+                sum += SIMD3(Float(px[i]), Float(px[i + 1]), Float(px[i + 2])) / 255; n += 1
+            }
+        }
+        return n > 0 ? sum / n : nil
+    }
+
+    /// Irregular flat blob (a puddle), lying in the XZ plane, roughly `size` across.
+    static func blobMesh(size: Float, seed: UInt64) -> MeshResource {
+        var rng = SplitMix(seed: seed)
+        let ph = (0..<3).map { _ in Float(rng.next() % 628) / 100 }
+        let n = 40
+        var pos: [SIMD3<Float>] = [[0, 0, 0]], idx: [UInt32] = []
+        for i in 0..<n {
+            let th = Float(i) / Float(n) * 2 * .pi
+            let r = size / 2 * (0.8 + 0.13 * sin(2 * th + ph[0]) + 0.08 * sin(5 * th + ph[1]) + 0.04 * sin(9 * th + ph[2]))
+            pos.append([cos(th) * r, 0, sin(th) * r * 0.7])
+        }
+        for i in 0..<UInt32(n) { let j = 1 + (i + 1) % UInt32(n); idx += [0, j, 1 + i, 0, 1 + i, j] }   // both sides
+        var d = MeshDescriptor(name: "puddle")
+        d.positions = .init(pos)
+        d.normals = .init(Array(repeating: SIMD3<Float>(0, 1, 0), count: pos.count))
+        d.textureCoordinates = .init(pos.map { SIMD2<Float>($0.x / size + 0.5, $0.z / size + 0.5) })
+        d.primitives = .triangles(idx)
+        return try! MeshResource.generate(from: [d])
     }
 }
 
