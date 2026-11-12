@@ -34,7 +34,7 @@ Repo: github.com/mrjimcampbell/kicks-ride (public, GitHub Pages from `main` root
 4. **Apple TV = display + big HUD** joining over the local network (Network.framework / Bonjour). Phone shows a stripped HUD + controls (stop, snapshot, skip) — like Zwift Companion. Keep a shared Swift package so roles could later be swapped (TV as standalone driver).
 5. **Arena**: bought "Track And Field Arena" by JG3D (Fab). Jim has the .blend, USDZ, textures and a PDF. ~254k verts, 3–4K textures → slim for tvOS (decimate where safe, 1–2K textures, KTX/ASTC). **Paid asset: never commit it to the public repo** — keep under `assets/` and gitignore it.
 6. **Exact 400 m**: lane 1 measured 0.30 m from the inner kerb; straights 84.39 m, inner kerb bend radius 36.5 m. Verify/rescale the arena's track; overlay an exact-spec track surface if its markings are off. Runner position = treadmill distance mod 400 along lane 1 (or a chosen lane, scaled).
-7. Free Apple developer account for now (7-day reinstall; automate rebuild later). Paid account if it gets annoying.
+7. Free Apple developer account for now (7-day reinstall: run `tools/install-iphone.sh` in your own terminal with the phone plugged in; signing needs the login keychain, which the sandboxed shell can't read). Paid account if it gets annoying.
 
 ## Native apps — state as of 12 Nov 2026
 - `apple/project.yml` (XcodeGen; run `xcodegen` in `apple/` after adding files — the .xcodeproj is generated and gitignored). Xcode 27.2; `xcode-select` points at CommandLineTools, so CLI builds need `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`. Signing: copy `apple/Config/Local.xcconfig.example` → `Local.xcconfig` (gitignored) with the Personal Team ID.

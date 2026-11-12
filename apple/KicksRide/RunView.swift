@@ -14,6 +14,10 @@ final class RunSession {
 
     func togglePause() { userPaused.toggle() }
 
+    /// This run's incline target (Fixed mode only). Starts at the Preferences value; the
+    /// in-run buttons change it for this run without touching the saved preference.
+    var inclineTarget: Double?
+
     /// Called about once a second.
     func tick(hub: BluetoothHub, inclineMode: InclineMode, inclineFixed: Double) {
         let now = Date()
@@ -46,7 +50,8 @@ final class RunSession {
 
         // Treadmill control: incline per Preferences (Off never sends anything), speed resends.
         if let m = hub.machine, live.machineKind == .treadmill {
-            m.requestIncline(inclineMode == .fixed ? inclineFixed : nil)
+            if inclineMode == .fixed, inclineTarget == nil { inclineTarget = inclineFixed }
+            m.requestIncline(inclineMode == .fixed ? inclineTarget : nil)
             m.tick()
         }
     }
@@ -92,6 +97,12 @@ struct RunView: View {
                     nudge("+0.5 km/h") { m.setSpeed(((s.speedKmh + 0.5) * 2).rounded() / 2) }
                 }
                 .disabled(!hub.live.isBeltMoving)
+                if inclineMode == InclineMode.fixed.rawValue {
+                    HStack(spacing: 16) {
+                        nudge("−0.5 %") { stepIncline(-0.5, m) }
+                        nudge("+0.5 %") { stepIncline(0.5, m) }
+                    }
+                }
             }
             HStack(spacing: 16) {
                 Button(session.userPaused ? "Resume" : "Pause") { session.togglePause() }
@@ -120,6 +131,12 @@ struct RunView: View {
                 .minimumScaleFactor(0.5).lineLimit(1)
             Text(unit).font(.headline).foregroundStyle(.secondary)
         }
+    }
+
+    private func stepIncline(_ delta: Double, _ m: MachineConnection) {
+        let r = m.inclineRange
+        let next = (session.inclineTarget ?? inclineFixed) + delta
+        session.inclineTarget = min(max(next, r?.min ?? 0), r?.max ?? 15)
     }
 
     private func nudge(_ title: String, action: @escaping () -> Void) -> some View {
