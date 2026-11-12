@@ -48,3 +48,19 @@ void fogSurface(realitykit::surface_parameters params)
     surface.set_specular(spec * k);
     surface.set_ambient_occlusion(ao);
 }
+
+// The sky dome: unlit panorama, fading to the fog colour towards (and below) the horizon,
+// so the backdrop melts into the fogged arena. custom_parameter = (fog r, g, b, amount 0…1).
+[[visible]]
+void skyFog(realitykit::surface_parameters params)
+{
+    constexpr sampler s(coord::normalized, address::repeat, filter::linear, mip_filter::linear);
+    float2 uv = params.geometry().uv0();
+    uv.y = 1.0 - uv.y;
+    half3 sky = params.textures().custom().sample(s, uv).rgb   // panorama in the custom slot
+              * half3(params.material_constants().base_color_tint());
+    float4 fog = params.uniforms().custom_parameter();
+    float up = normalize(params.geometry().model_position()).y;   // dome is centred on the camera
+    float f = fog.w * (1.0 - smoothstep(-0.02, 0.35, up));
+    params.surface().set_base_color(mix(sky, half3(fog.rgb), half(f)));
+}

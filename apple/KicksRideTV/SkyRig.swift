@@ -79,18 +79,20 @@ final class SkyRig {
     @ObservationIgnored private let rain = Entity()
     @ObservationIgnored private let splashes = Entity()
     @ObservationIgnored private let puddles = Entity()
-    @ObservationIgnored private let fog = Entity()
-    @ObservationIgnored private var fogShells: [ModelEntity] = []
     @ObservationIgnored private var beams: [Entity] = []
     /// Set by ArenaView before `addReceivers`, so puddles land on the lanes.
     @ObservationIgnored var track: TrackGeometry?
     @ObservationIgnored private var wetSurfaces: [(entity: ModelEntity, dry: [any RealityKit.Material])] = []
     /// Arena models whose materials run the fog shader (custom_parameter = fog colour + density).
     @ObservationIgnored private var fogged: [ModelEntity] = []
-    @ObservationIgnored private let fogShader: CustomMaterial.SurfaceShader? = {
+    @ObservationIgnored private let fogShader: CustomMaterial.SurfaceShader? = SkyRig.shader("fogSurface")
+    /// Fogging the sky dome with Fog.metal's skyFog renders it black (custom unlit material on
+    /// the generated dome) — not solved yet, so the dome stays a plain UnlitMaterial for now.
+    @ObservationIgnored private let skyShader: CustomMaterial.SurfaceShader? = nil
+    private static func shader(_ name: String) -> CustomMaterial.SurfaceShader? {
         guard let lib = MTLCreateSystemDefaultDevice()?.makeDefaultLibrary() else { return nil }
-        return CustomMaterial.SurfaceShader(named: "fogSurface", in: lib)
-    }()
+        return CustomMaterial.SurfaceShader(named: name, in: lib)
+    }
     /// Reflection world: a mirror image (y → -y) of the sky, runner and lights, seen through
     /// the puddles, which are portals into it — a planar reflection without render-to-texture.
     @ObservationIgnored private let reflection = Entity()
@@ -157,15 +159,6 @@ final class SkyRig {
         root.addChild(splashes)
         root.addChild(puddles)
 
-        // Fog: two mist bands *outside* the stadium (it reaches ~100 m from the centre), fixed
-        // to the track rather than the camera, so they never cut through the arena. They fade
-        // the far horizon into the sky; the stadium itself stays clear (no real fog in RealityKit).
-        for r: Float in [150, 260] {
-            let shell = ModelEntity(mesh: Self.shellMesh(radius: r, height: 90), materials: [UnlitMaterial()])
-            fogShells.append(shell)
-            fog.addChild(shell)
-        }
-        root.addChild(fog)
 
         reflection.components.set(WorldComponent())
         mirror.scale = [1, -1, 1]
@@ -227,7 +220,7 @@ final class SkyRig {
                 entity.components.set(model)
             }
             // Swap in the fog shader (same textures and settings, plus distance fog).
-            if let fogShader, let me = entity as? ModelEntity {
+            if let fogShader, let me = entity as? ModelEntity, !isRunnerPart(entity) {
                 model.materials = model.materials.map { m in
                     (try? CustomMaterial(from: m, surfaceShader: fogShader)) ?? m
                 }
@@ -239,6 +232,13 @@ final class SkyRig {
             }
         }
         for child in entity.children { addReceivers(to: child) }
+    }
+
+    /// The runner keeps its own material (the fog shader turned the skinned skeleton dark).
+    private func isRunnerPart(_ e: Entity) -> Bool {
+        var p: Entity? = e
+        while let x = p { if x === runner { return true }; p = x.parent }
+        return false
     }
 
     private func isRigPart(_ e: Entity) -> Bool {
@@ -334,12 +334,21 @@ final class SkyRig {
         } else {
             print("SkyRig: sky_\(file).hdr missing — run tools/sky/fetch_skies.sh")
         }
-        var material = UnlitMaterial()
+        var material: any RealityKit.Material = UnlitMaterial()
         let horizon = Bundle.main.url(forResource: "sky_\(file)", withExtension: "jpg").flatMap(Self.horizonColour) ?? [0.6, 0.6, 0.65]
         if let url = Bundle.main.url(forResource: "sky_\(file)", withExtension: "jpg"),
            let tex = await Self.loadBackdrop(url) {
             let g = CGFloat(gloom * (t.isDark ? 0.8 : 1))
-            material.color = .init(tint: .init(red: g, green: g, blue: g * 1.02, alpha: 1), texture: .init(tex))
+            let tint = UIColor(red: g, green: g, blue: g * 1.02, alpha: 1)
+            if let skyShader, var c = try? CustomMaterial(surfaceShader: skyShader, lightingModel: .unlit) {
+                c.baseColor = .init(tint: tint)
+                c.custom.texture = .init(tex)
+                material = c
+            } else {
+                var u = UnlitMaterial()
+                u.color = .init(tint: tint, texture: .init(tex))
+                material = u
+            }
         }
         guard time == t, weather == w else { return }
 
@@ -369,17 +378,6 @@ final class SkyRig {
         for g in mirrorGlows { g.isEnabled = t.lightsOn }
         for b in beams { b.isEnabled = t.lightsOn && (w == .rain || w == .fog) }
 
-        // Mist: thick in fog, a light haze in rain, none otherwise. Colour follows the light.
-        let mistAlpha: Float = w == .fog ? 0.95 : (w == .rain ? 0.4 : 0)   // per band, at the ground
-        fog.isEnabled = mistAlpha > 0
-        if mistAlpha > 0 {
-            // Mist takes the colour of the sky's own horizon, so it blends into the backdrop.
-            let c = horizon * Float(gloom)
-            let tex = try? await TextureResource(image: Self.mistImage(colour: c, alpha: mistAlpha), options: .init(semantic: .color))
-            var m = UnlitMaterial()
-            if let tex { m.color = .init(tint: .white, texture: .init(tex)); m.blending = .transparent(opacity: .init(floatLiteral: 1)) }
-            for shell in fogShells { shell.model?.materials = [m] }
-        }
 
         // Rain: streaks on, track wet (glossier and darker).
         rain.isEnabled = w == .rain
@@ -391,7 +389,15 @@ final class SkyRig {
         }
         // Distance fog in every arena material: thick in fog, a little in rain.
         let density: Float = w == .fog ? 0.02 : (w == .rain ? 0.005 : 0)
-        let fogValue = SIMD4<Float>(horizon * Float(gloom) * (t.isDark ? 0.6 : 1), density)
+        let fogColour = horizon * Float(gloom) * (t.isDark ? 0.6 : 1)
+        let fogValue = SIMD4<Float>(fogColour, density)
+        let skyFogAmount: Float = w == .fog ? 0.95 : (w == .rain ? 0.4 : 0)
+        for d in [dome, mirrorDome] {
+            if var c = d.model?.materials.first as? CustomMaterial {
+                c.custom.value = SIMD4<Float>(fogColour, skyFogAmount)
+                d.model?.materials = [c]
+            }
+        }
         for e in fogged {
             guard var model = e.model else { continue }
             model.materials = model.materials.map { m in
@@ -508,6 +514,7 @@ final class SkyRig {
         }
         var d = MeshDescriptor(name: "skyDome")
         d.positions = .init(positions)
+        d.normals = .init(positions.map { -simd_normalize($0) })   // custom materials need normals
         d.textureCoordinates = .init(uvs)
         d.primitives = .triangles(indices)
         return try! MeshResource.generate(from: [d])
