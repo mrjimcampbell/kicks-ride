@@ -22,7 +22,10 @@ OUT = os.path.join(SRC, "build")
 # clip name -> source FBX (add Jogging / Idle here when downloaded)
 CLIPS = {
     "run": "Running.fbx",
+    "jog": "Running_slower.fbx",
     "walk": "Standard Walk.fbx",
+    "idle_arms": "Arm Stretching.fbx",   # idle clips: no travel speed; the app alternates them
+    "idle_neck": "Neck Stretching.fbx",
 }
 
 BONE_COLOUR = (0.86, 0.83, 0.75, 1.0)  # ivory instead of Mixamo's flat grey
@@ -57,10 +60,13 @@ def build(clip, fbx):
     arm = next(o for o in bpy.data.objects if o.type == "ARMATURE")
     f0, f1 = map(int, arm.animation_data.action.frame_range)
 
-    v = natural_speed(arm, f0, f1)
     cycle = (f1 - f0) / sc.render.fps
-    log(f"{clip}: {f1 - f0} frames, cycle {cycle:.3f}s ({round(120 / cycle)} spm), "
-        f"natural speed {v:.2f} m/s ({v * 3.6:.1f} km/h)")
+    if clip.startswith("idle"):
+        log(f"{clip}: {f1 - f0} frames, {cycle:.2f}s")
+    else:
+        v = natural_speed(arm, f0, f1)
+        log(f"{clip}: {f1 - f0} frames, cycle {cycle:.3f}s ({round(120 / cycle)} spm), "
+            f"natural speed {v:.2f} m/s ({v * 3.6:.1f} km/h)")
 
     for mat in bpy.data.materials:
         bsdf = next((n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None)

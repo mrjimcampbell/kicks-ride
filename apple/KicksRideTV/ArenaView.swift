@@ -63,7 +63,7 @@ struct ArenaView: View {
                 let forward = SIMD3<Float>(Float(cos(p.heading)), 0, Float(-sin(p.heading)))
                 runner.position = feet
                 runner.orientation = simd_quatf(angle: Float(p.heading), axis: [0, 1, 0])
-                animator?.update(speed: session.state.isPaused ? 0 : session.state.speedKmh / 3.6)
+                animator?.update(speed: session.state.isPaused ? 0 : session.state.speedKmh / 3.6, dt: event.deltaTime)
                 // Chase camera: behind and above, looking just ahead of the runner's waist.
                 let waist = feet + [0, 0.9, 0]
                 camera.look(at: waist + forward * 4, from: waist - forward * 7 + [0, 3, 0], relativeTo: nil)

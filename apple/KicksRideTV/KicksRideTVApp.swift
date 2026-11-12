@@ -14,9 +14,9 @@ struct KicksRideTVApp: App {
 @Observable final class TVSession {
     var state = SessionState()
 
-    /// Demo until the phone link exists: alternate a walk and a run so the runner's
-    /// walk ↔ run switching and playback-rate matching can be checked.
-    static let demoProgramme: [(seconds: Double, kmh: Double)] = [(15, 5), (25, 14), (10, 9), (20, 18)]
+    /// Demo until the phone link exists: stand (idles), walk, jog, run, sprint, walk, so the
+    /// runner's clip switching and playback-rate matching can be checked.
+    static let demoProgramme: [(seconds: Double, kmh: Double)] = [(28, 0), (12, 5), (15, 10), (15, 14), (10, 18), (8, 5)]
 
     func tick(_ dt: TimeInterval) {
         let total = Self.demoProgramme.reduce(0) { $0 + $1.seconds }
