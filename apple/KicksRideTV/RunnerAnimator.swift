@@ -45,6 +45,28 @@ final class RunnerAnimator {
     private let model: Entity
     private let animations: [String: AnimationResource]
 
+    /// A second copy of the character, driven in lock-step (the puddle reflection).
+    private var mirrorModel: Entity?
+    private var mirrorController: AnimationPlaybackController?
+
+    /// Clone the runner for a reflection; the clone plays exactly what the runner plays.
+    func makeMirror() -> Entity {
+        let clone = entity.clone(recursive: true)
+        mirrorModel = clone.children.first
+        return clone
+    }
+
+    /// Play on the runner and its mirror together.
+    private func play(_ anim: AnimationResource, transition: TimeInterval) -> AnimationPlaybackController {
+        mirrorController = mirrorModel?.playAnimation(anim, transitionDuration: transition)
+        return model.playAnimation(anim, transitionDuration: transition)
+    }
+
+    private func setSpeed(_ c: AnimationPlaybackController, _ v: Float) {
+        c.speed = v
+        mirrorController?.speed = v
+    }
+
     private enum State {
         case none
         case moving(Clip, AnimationPlaybackController)
@@ -100,12 +122,12 @@ final class RunnerAnimator {
         if case .moving(let cur, let c) = state, cur.name == clip.name {
             controller = c
         } else if let anim = animations[clip.name] {
-            controller = model.playAnimation(anim, transitionDuration: isStarting ? 0 : Self.crossfade)
+            controller = play(anim, transition: isStarting ? 0 : Self.crossfade)
             state = .moving(clip, controller)
             print("RunnerAnimator: \(clip.name) at \(String(format: "%.1f", speed * 3.6)) km/h")
         } else { return }
         let rate = Float(speed / clip.naturalSpeed)
-        controller.speed = min(max(rate, clip.minRate), clip.maxRate)
+        setSpeed(controller, min(max(rate, clip.minRate), clip.maxRate))
     }
 
     private var isStarting: Bool { if case .none = state { true } else { false } }
@@ -120,7 +142,7 @@ final class RunnerAnimator {
         default:
             if idles.isEmpty {
                 // No idle clips: freeze whatever is playing.
-                if case .moving(_, let c) = state { c.speed = 0 }
+                if case .moving(_, let c) = state { setSpeed(c, 0) }
             } else {
                 playIdle(idles, index: 0)
             }
@@ -130,8 +152,8 @@ final class RunnerAnimator {
     private func playIdle(_ idles: [String], index: Int) {
         guard idles.indices.contains(index), let anim = animations[idles[index]] else { return }
         let fade = isStarting ? 0 : Self.idleCrossfade
-        let controller = model.playAnimation(anim, transitionDuration: fade)
-        controller.speed = 1
+        let controller = play(anim, transition: fade)
+        setSpeed(controller, 1)
         print("RunnerAnimator: idle → \(idles[index]) (\(String(format: "%.1f", anim.definition.duration)) s)")
         // Start the next idle so its crossfade finishes as this one ends.
         state = .idle(index: index, remaining: max(anim.definition.duration - Self.idleCrossfade, 1))

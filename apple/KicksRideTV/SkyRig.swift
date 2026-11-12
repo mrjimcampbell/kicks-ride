@@ -4,6 +4,7 @@ import CoreGraphics
 import ImageIO
 import Observation
 import UIKit
+import Metal
 import KicksCore
 
 /// Look-dev rig for sky, light and mood: a time of day × a weather.
@@ -14,7 +15,8 @@ import KicksCore
 /// - Rain: falling streaks + ground splashes around the camera, a wet (glossy, darker) track,
 ///   puddles, dimmer sky. Fog: layered mist shells round the camera (a cheap fake; no
 ///   real volumetrics in RealityKit). Light beams from the masts in rain/fog after dark.
-/// - Bloom (tvOS 27+) on the emissive lamp faces when the floodlights are on.
+/// - No real bloom: RealityKit's BloomComponent crashed the renderer on tvOS 27.2 whenever
+///   it changed at runtime; the glow sprites stand in.
 /// Skies come from tools/sky/fetch_skies.sh (Poly Haven, CC0), copied in by a build phase.
 /// Remote while idle: up/down = time of day, click = weather.
 /// Launch args: `-kr-sky <time>` and `-kr-weather <weather>`.
@@ -80,10 +82,24 @@ final class SkyRig {
     @ObservationIgnored private let fog = Entity()
     @ObservationIgnored private var fogShells: [ModelEntity] = []
     @ObservationIgnored private var beams: [Entity] = []
-    @ObservationIgnored private var lampFaces: [Entity] = []
     /// Set by ArenaView before `addReceivers`, so puddles land on the lanes.
     @ObservationIgnored var track: TrackGeometry?
     @ObservationIgnored private var wetSurfaces: [(entity: ModelEntity, dry: [any RealityKit.Material])] = []
+    /// Arena models whose materials run the fog shader (custom_parameter = fog colour + density).
+    @ObservationIgnored private var fogged: [ModelEntity] = []
+    @ObservationIgnored private let fogShader: CustomMaterial.SurfaceShader? = {
+        guard let lib = MTLCreateSystemDefaultDevice()?.makeDefaultLibrary() else { return nil }
+        return CustomMaterial.SurfaceShader(named: "fogSurface", in: lib)
+    }()
+    /// Reflection world: a mirror image (y → -y) of the sky, runner and lights, seen through
+    /// the puddles, which are portals into it — a planar reflection without render-to-texture.
+    @ObservationIgnored private let reflection = Entity()
+    @ObservationIgnored private let mirror = Entity()
+    @ObservationIgnored private let mirrorDome: ModelEntity
+    @ObservationIgnored private let mirrorIBL = Entity()
+    @ObservationIgnored private var mirrorRunner: Entity?
+    @ObservationIgnored private weak var runner: Entity?
+    @ObservationIgnored private var mirrorGlows: [Entity] = []
     @ObservationIgnored private var bannerTask: Task<Void, Never>?
     @ObservationIgnored private var applied: String?
 
@@ -95,6 +111,7 @@ final class SkyRig {
 
     init() {
         dome = ModelEntity(mesh: Self.domeMesh(radius: 900), materials: [UnlitMaterial(color: .black)])
+        mirrorDome = ModelEntity(mesh: Self.domeMesh(radius: 900), materials: [UnlitMaterial(color: .black)])
         root.addChild(dome)
         root.addChild(ibl)
         // tvOS ignores the old maximumDistance property; the projection must be set this way.
@@ -125,16 +142,6 @@ final class SkyRig {
             glow.addChild(disc)
             glows.append(glow)
 
-            // Lamp face: a bright emissive panel facing the track (what bloom catches).
-            var face = PhysicallyBasedMaterial()
-            face.baseColor = .init(tint: .white)
-            face.emissiveColor = .init(color: .init(red: 1, green: 0.95, blue: 0.85, alpha: 1))
-            face.emissiveIntensity = 12
-            let panel = ModelEntity(mesh: .generateBox(width: 3.2, height: 2.6, depth: 0.1), materials: [face])
-            panel.transform = s.transform
-            panel.position = head + [0, 0.3, 0]
-            lampFaces.append(panel)
-            root.addChild(panel)
 
             // Beam: a soft cone of light down the spot's axis, only in rain/fog after dark.
             let beam = ModelEntity(mesh: Self.coneMesh(length: 70, radius: 26), materials: [Self.beamMaterial])
@@ -150,8 +157,6 @@ final class SkyRig {
         root.addChild(splashes)
         root.addChild(puddles)
 
-        // Fog: camera-centred open cylinders; each hides a little more of what lies beyond it,
-        // so distant things fade (in steps — a cheap stand-in for real distance fog).
         // Fog: two mist bands *outside* the stadium (it reaches ~100 m from the centre), fixed
         // to the track rather than the camera, so they never cut through the arena. They fade
         // the far horizon into the sky; the stadium itself stays clear (no real fog in RealityKit).
@@ -161,6 +166,37 @@ final class SkyRig {
             fog.addChild(shell)
         }
         root.addChild(fog)
+
+        reflection.components.set(WorldComponent())
+        mirror.scale = [1, -1, 1]
+        reflection.addChild(mirror)
+        mirror.addChild(mirrorDome)
+        mirror.addChild(mirrorIBL)
+        // The lamps reflect too (glow sprites). No mirrored spot lights: RealityKit has a light
+        // limit, and six more knocked the real floodlights out on the Apple TV.
+        for g in glows {
+            let c = g.clone(recursive: true)
+            mirrorGlows.append(c)
+            mirror.addChild(c)
+        }
+        root.addChild(reflection)
+    }
+
+    /// The runner and a lock-step clone of it for the reflection world.
+    func setRunner(_ runner: Entity, mirrorClone: Entity?) {
+        self.runner = runner
+        if let mirrorClone {
+            mirrorRunner = mirrorClone
+            mirror.addChild(mirrorClone)
+            setReceivers(mirrorClone, light: mirrorIBL)
+        }
+    }
+
+    private func setReceivers(_ e: Entity, light: Entity) {
+        if e.components.has(ModelComponent.self) {
+            e.components.set(ImageBasedLightReceiverComponent(imageBasedLight: light))
+        }
+        for c in e.children { setReceivers(c, light: light) }
     }
 
     /// Call once the arena and runner are in the scene: hooks up lighting, finds the track,
@@ -189,7 +225,16 @@ final class SkyRig {
                     return pbr
                 }
                 entity.components.set(model)
-            } else if object == "Track_Lanes", let me = entity as? ModelEntity {
+            }
+            // Swap in the fog shader (same textures and settings, plus distance fog).
+            if let fogShader, let me = entity as? ModelEntity {
+                model.materials = model.materials.map { m in
+                    (try? CustomMaterial(from: m, surfaceShader: fogShader)) ?? m
+                }
+                entity.components.set(model)
+                fogged.append(me)
+            }
+            if object == "Track_Lanes", let me = entity as? ModelEntity {
                 wetSurfaces.append((me, model.materials))
             }
         }
@@ -206,6 +251,8 @@ final class SkyRig {
     func follow(camera: Entity) {
         let p = camera.position(relativeTo: nil)
         dome.position = p
+        mirrorDome.position = p          // mirror's local space: reflected about the ground
+        if let runner, let mirrorRunner { mirrorRunner.transform = runner.transform }
         rain.position = p + [0, 14, 0]
         splashes.position = [p.x, 0.03, p.z]
     }
@@ -233,20 +280,30 @@ final class SkyRig {
     private func buildPuddles() {
         guard puddles.children.isEmpty, let track else { return }
         var rng = SplitMix(seed: 7)
-        var m = PhysicallyBasedMaterial()
-        m.baseColor = .init(tint: .init(white: 0.05, alpha: 1))
-        m.roughness = .init(floatLiteral: 0.02)
-        m.metallic = .init(floatLiteral: 0)
-        m.specular = .init(floatLiteral: 1)
-        for _ in 0..<70 {
-            let d = Double(rng.next() % 400)
-            let lane = 1 + Int(rng.next() % 8)
+        // Each puddle: a portal into the mirror world (the reflection) under a thin dark,
+        // glossy, half-transparent film (water colour + floodlight highlights).
+        var film = PhysicallyBasedMaterial()
+        film.baseColor = .init(tint: .init(white: 0.02, alpha: 1))
+        film.roughness = .init(floatLiteral: 0.03)
+        film.specular = .init(floatLiteral: 1)
+        film.blending = .transparent(opacity: .init(floatLiteral: 0.35))
+        for i in 0..<70 {
+            // The first sits right under the start line, so the runner's reflection is visible.
+            let d = i == 0 ? 1.0 : Double(rng.next() % 400)
+            let lane = i == 0 ? 1 : 1 + Int(rng.next() % 8)
             let p = track.displayPose(distance: d, lane: lane)
-            let w = 1.0 + Float(rng.next() % 100) / 100 * 2.2
-            let puddle = ModelEntity(mesh: Self.blobMesh(size: w, seed: rng.next()), materials: [m])
+            let w = i == 0 ? 2.2 : 1.0 + Float(rng.next() % 100) / 100 * 2.2
+            let mesh = Self.blobMesh(size: w, seed: rng.next())
+            let puddle = Entity()
             puddle.position = [Float(p.x), 0.006, Float(-p.y)]
             puddle.orientation = simd_quatf(angle: Float(rng.next() % 628) / 100, axis: [0, 1, 0])
-            puddle.components.set(ImageBasedLightReceiverComponent(imageBasedLight: ibl))
+            let portal = ModelEntity(mesh: mesh, materials: [PortalMaterial()])
+            portal.components.set(PortalComponent(target: reflection))
+            let sheen = ModelEntity(mesh: mesh, materials: [film])
+            sheen.position.y = 0.003
+            sheen.components.set(ImageBasedLightReceiverComponent(imageBasedLight: ibl))
+            puddle.addChild(portal)
+            puddle.addChild(sheen)
             puddles.addChild(puddle)
         }
     }
@@ -292,6 +349,12 @@ final class SkyRig {
         ibl.orientation = yaw
         dome.model?.materials = [material]
         dome.orientation = yaw
+        mirrorDome.model?.materials = [material]
+        mirrorDome.orientation = yaw
+        if let env {
+            mirrorIBL.components.set(ImageBasedLightComponent(source: .single(env), intensityExponent: iblExposure))
+        }
+        mirrorIBL.orientation = yaw
 
         let dir = yaw.act(sunDir)
         let sunOn = w == .clear && look.sunLux > 0
@@ -303,18 +366,8 @@ final class SkyRig {
         let lumens: Float = t.isDark ? 25_000_000 : 10_000_000
         for f in floods { f.isEnabled = t.lightsOn; f.light.intensity = t.lightsOn ? lumens : 0 }
         for g in glows { g.isEnabled = t.lightsOn }
-        for f in lampFaces { f.isEnabled = t.lightsOn }
+        for g in mirrorGlows { g.isEnabled = t.lightsOn }
         for b in beams { b.isEnabled = t.lightsOn && (w == .rain || w == .fog) }
-        // Bloom stays attached: removing BloomComponent at runtime crashes RealityKit's
-        // renderer (tvOS 27.2, BloomFullscreenApplyNode). Daylight just raises the threshold.
-        if #available(tvOS 27.0, *) {
-            if !root.components.has(BloomComponent.self) { root.components.set(BloomComponent(scope: .unbounded)) }
-            var o = BloomOptionsComponent()
-            o.strength = t.lightsOn ? 0.3 : 0
-            o.threshold = t.lightsOn ? 1.6 : 50
-            o.blurRadius = 20
-            root.components.set(o)
-        }
 
         // Mist: thick in fog, a light haze in rain, none otherwise. Colour follows the light.
         let mistAlpha: Float = w == .fog ? 0.95 : (w == .rain ? 0.4 : 0)   // per band, at the ground
@@ -336,10 +389,29 @@ final class SkyRig {
         for s in wetSurfaces {
             s.entity.model?.materials = w == .rain ? s.dry.map(Self.wet) : s.dry
         }
+        // Distance fog in every arena material: thick in fog, a little in rain.
+        let density: Float = w == .fog ? 0.02 : (w == .rain ? 0.005 : 0)
+        let fogValue = SIMD4<Float>(horizon * Float(gloom) * (t.isDark ? 0.6 : 1), density)
+        for e in fogged {
+            guard var model = e.model else { continue }
+            model.materials = model.materials.map { m in
+                guard var c = m as? CustomMaterial else { return m }
+                c.custom.value = fogValue
+                return c
+            }
+            e.model = model
+        }
+
         print("SkyRig: \(key) sky \(file) sun \(sunOn ? "\(dir)" : "off"), \(wetSurfaces.count) wet-able surfaces")
     }
 
     private static func wet(_ m: any RealityKit.Material) -> any RealityKit.Material {
+        if var c = m as? CustomMaterial {
+            c.roughness = .init(floatLiteral: 0.12)
+            c.specular = .init(floatLiteral: 0.8)
+            c.baseColor.tint = .init(white: 0.7, alpha: 1)
+            return c
+        }
         guard var pbr = m as? PhysicallyBasedMaterial else { return m }
         pbr.roughness = .init(floatLiteral: 0.12)
         pbr.specular = .init(floatLiteral: 0.8)

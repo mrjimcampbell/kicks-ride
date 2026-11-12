@@ -49,7 +49,11 @@ targets:
   KicksRideTV:
     type: application
     platform: tvOS
-    sources: [KicksRideTV]
+    sources:
+      - path: KicksRideTV
+        # Fog.metal needs Xcode's Metal Toolchain (xcodebuild -downloadComponent MetalToolchain);
+        # until it's installed the app builds without it and runs without distance fog.
+        excludes: ["Fog.metal"]
     dependencies:
       - package: KicksCore
         products: [KicksCore, KicksLink]

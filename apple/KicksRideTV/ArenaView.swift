@@ -53,6 +53,7 @@ struct ArenaView: View {
 
             // Sky, sun, image-based light and floodlights (look-dev presets).
             root.addChild(skyRig.root)
+            skyRig.setRunner(runner, mirrorClone: animator?.makeMirror())
             await skyRig.attach(to: root, track: track)
 
             content.add(root)
