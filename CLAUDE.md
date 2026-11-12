@@ -50,6 +50,7 @@ Repo: github.com/mrjimcampbell/kicks-ride (public, GitHub Pages from `main` root
 
 ## Roadmap (suggested order)
 1. iPhone app MVP: FTMS treadmill (port logic from index.html), workouts + builder, live HUD, TCX + Strava upload via the existing relay, HR strap. Usable on its own.
+   - **First real test = actually connecting to the treadmill.** Phone setup flow before a run: Devices (scan + pick FTMS treadmill/bike, HR strap, optional footpod for cadence; live readings to confirm; remembered + auto-reconnect) → Route (the track for now, built as a list) → Preferences (units, HUD size, incline mode, more to come) → Start (workout or freestyle). TV shows "waiting for phone" until Start, then the arena.
 2. tvOS app: arena in RealityKit, runner lapping the track in sync, big HUD, receives live state from the phone.
 3. Look-dev: golden hour, sunset, rain with puddle reflections + splashes, snow; what's beyond the fence (city / countryside / wasteland).
 4. Controls: Jim's Bluetooth ring remote (likely media keys → MPRemoteCommandCenter next/prev = ±speed for freestyle fartlek), Siri Remote / game controllers.
