@@ -105,11 +105,12 @@ final class SkyRig {
     @ObservationIgnored private var bannerTask: Task<Void, Never>?
     @ObservationIgnored private var applied: String?
 
-    /// Floodlight heads (RealityKit coordinates, track centre at origin), from the six
-    /// Lamps_n objects in the arena .blend (top at ~24.6 m).
+    /// Centres of the six lamp banks (RealityKit coordinates, track centre at origin), measured
+    /// from the Lamps_n objects in the arena .blend: banks span z 21.1–24.6 m, ~3 m wide.
+    /// Blender (x, y, z) → RealityKit (x + 6.420, z − 0.538, −y + 4.002).
     static let mastHeads: [SIMD3<Float>] = [
-        (75.8, -42.0), (75.7, 53.6), (-90.5, 53.6), (-91.1, -42.0), (-6.0, -54.8), (-5.9, 53.7),
-    ].map { bx, by in SIMD3<Float>(bx + 6.420, 24.0 - 0.538, -by - 4.002) }
+        (75.81, -41.89), (75.67, 53.54), (-90.44, 53.54), (-91.01, -41.94), (-5.97, -54.76), (-5.97, 53.66),
+    ].map { bx, by in SIMD3<Float>(bx + 6.420, 22.78 - 0.538, -by + 4.002) }
 
     init() {
         dome = ModelEntity(mesh: Self.domeMesh(radius: 900), materials: [UnlitMaterial(color: .black)])
@@ -121,6 +122,7 @@ final class SkyRig {
         root.addChild(sun)
 
         let glowTexture = try? TextureResource(image: Self.radialGlowImage(), options: .init(semantic: .color))
+        let bulbTexture = try? TextureResource(image: Self.radialGlowImage(falloff: 6), options: .init(semantic: .color))
         for head in Self.mastHeads {
             let s = SpotLight()
             s.light.color = .init(red: 1, green: 0.95, blue: 0.85, alpha: 1)
@@ -133,15 +135,31 @@ final class SkyRig {
             floods.append(s)
             root.addChild(s)
 
-            // Glow: a camera-facing soft disc over the lamp bank (a fake bloom).
+            // Lamp bank: a hot sprite on each of its 2 × 4 panels on the face towards the track, plus a soft halo
+            // round the whole bank (a fake bloom). All camera-facing sprites.
             let glow = Entity()
-            glow.position = head + [0, 1.2, 0]
-            glow.components.set(BillboardComponent())
-            var m = UnlitMaterial()
-            if let glowTexture { m.color = .init(tint: .white, texture: .init(glowTexture)) }
-            m.blending = .transparent(opacity: .init(floatLiteral: 1))
-            let disc = ModelEntity(mesh: .generatePlane(width: 14, height: 14), materials: [m])
-            glow.addChild(disc)
+            glow.position = head
+            let toTrack = simd_normalize(SIMD3<Float>(-head.x, 0, -head.z))
+            let across = SIMD3<Float>(-toTrack.z, 0, toTrack.x)
+            var bulbMat = UnlitMaterial()
+            if let bulbTexture { bulbMat.color = .init(tint: .white, texture: .init(bulbTexture)) }
+            bulbMat.blending = .transparent(opacity: .init(floatLiteral: 1))
+            let bulbMesh = MeshResource.generatePlane(width: 1.6, height: 1.6)
+            for row in 0..<4 {
+                for col in 0..<2 {
+                    let bulb = ModelEntity(mesh: bulbMesh, materials: [bulbMat])
+                    bulb.position = across * (Float(col) - 0.5) * 1.3 + [0, (Float(row) - 1.5) * 0.8, 0] + toTrack * 0.6
+                    bulb.components.set(BillboardComponent())
+                    glow.addChild(bulb)
+                }
+            }
+            var haloMat = UnlitMaterial()
+            if let glowTexture { haloMat.color = .init(tint: .init(white: 0.8, alpha: 1), texture: .init(glowTexture)) }
+            haloMat.blending = .transparent(opacity: .init(floatLiteral: 0.85))
+            let halo = ModelEntity(mesh: .generatePlane(width: 14, height: 14), materials: [haloMat])
+            halo.position = toTrack * 0.8
+            halo.components.set(BillboardComponent())
+            glow.addChild(halo)
             glows.append(glow)
 
 
@@ -383,7 +401,8 @@ final class SkyRig {
         rain.isEnabled = w == .rain
         splashes.isEnabled = w == .rain
         buildPuddles()
-        puddles.isEnabled = w == .rain
+        // Portal reflections work, but read as black blobs at night; off unless -kr-puddles.
+        puddles.isEnabled = w == .rain && ProcessInfo.processInfo.arguments.contains("-kr-puddles")
         for s in wetSurfaces {
             s.entity.model?.materials = w == .rain ? s.dry.map(Self.wet) : s.dry
         }
@@ -428,23 +447,23 @@ final class SkyRig {
     private static func splashEmitter() -> ParticleEmitterComponent {
         var e = ParticleEmitterComponent()
         e.emitterShape = .box
-        e.emitterShapeSize = [24, 0.01, 24]
+        e.emitterShapeSize = [20, 0.01, 20]
         e.birthLocation = .volume
         e.birthDirection = .world
         e.emissionDirection = [0, 1, 0]
-        e.speed = 2.2
+        e.speed = 1.1
         e.speedVariation = 0.6
         e.fieldSimulationSpace = .global
         e.particlesInheritTransform = false
         var p = e.mainEmitter
-        p.birthRate = 7000
-        p.lifeSpan = 0.3
-        p.spreadingAngle = 0.9
-        p.size = 0.035
+        p.birthRate = 14000
+        p.lifeSpan = 0.16
+        p.spreadingAngle = 1.3
+        p.size = 0.012
         p.acceleration = [0, -9.8, 0]
         p.isLightingEnabled = false
         p.blendMode = .alpha
-        p.color = .constant(.single(UIColor(white: 0.95, alpha: 0.6)))
+        p.color = .constant(.single(UIColor(white: 0.95, alpha: 0.45)))
         e.mainEmitter = p
         return e
     }
@@ -473,13 +492,13 @@ final class SkyRig {
         return e
     }
 
-    static func radialGlowImage(size: Int = 128) -> CGImage {
+    static func radialGlowImage(size: Int = 128, falloff: Float = 2.4) -> CGImage {
         var px = [UInt8](repeating: 0, count: size * size * 4)
         let c = Float(size - 1) / 2
         for y in 0..<size {
             for x in 0..<size {
                 let d = min(1, hypot(Float(x) - c, Float(y) - c) / c)
-                let a = pow(1 - d, 2.4)                       // soft falloff
+                let a = falloff > 3 ? min(1, pow(1 - d, falloff) * 1.6 + (d < 0.25 ? 1 : 0)) : pow(1 - d, falloff)
                 let i = (y * size + x) * 4
                 let v = UInt8(255 * a)
                 px[i] = v; px[i + 1] = UInt8(Float(v) * 0.96); px[i + 2] = UInt8(Float(v) * 0.88); px[i + 3] = v

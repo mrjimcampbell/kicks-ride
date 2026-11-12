@@ -37,15 +37,19 @@ void fogSurface(realitykit::surface_parameters params)
     float dist = length(view);
     float heightFade = exp(-max(world.y, 0.0) / 18.0);          // thinner higher up
     float f = clamp(1.0 - exp(-fog.w * dist * heightFade), 0.0, 0.97);
-    half k = half(1.0 - f);
+    // Dither by a fraction of a display step so smooth fog gradients don't band into lines.
+    float2 px = params.geometry().screen_position().xy;
+    float noise = fract(sin(dot(px, float2(12.9898, 78.233))) * 43758.5453) - 0.5;
+    float3 fogLight = fog.rgb * f + noise / 255.0;
+    float k = 1.0 - f;
 
-    surface.set_base_color(base * k);
-    surface.set_emissive_color(emissive * k + half3(fog.rgb) * half(f));
+    surface.set_base_color(half3(float3(base) * k));
+    surface.set_emissive_color(half3(float3(emissive) * k + max(fogLight, 0.0)));
     surface.set_opacity(opacity);
     surface.set_normal(float3(normal));
     surface.set_roughness(rough);
-    surface.set_metallic(metal * k);
-    surface.set_specular(spec * k);
+    surface.set_metallic(half(float(metal) * k));
+    surface.set_specular(half(float(spec) * k));
     surface.set_ambient_occlusion(ao);
 }
 
