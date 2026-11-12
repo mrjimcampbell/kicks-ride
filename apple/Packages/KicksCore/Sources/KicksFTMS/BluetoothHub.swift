@@ -70,7 +70,10 @@ public final class BluetoothHub: NSObject {
     public private(set) var isScanning = false
     public private(set) var discovered: [DiscoveredDevice] = []
     public private(set) var live = LiveReadings()
-    public private(set) var log: [String] = []
+    /// Kept across launches (iOS may quit the app in the background between a test and reading it).
+    public private(set) var log: [String] = UserDefaults.standard.stringArray(forKey: "kr.bleLog") ?? [] {
+        didSet { UserDefaults.standard.set(log, forKey: "kr.bleLog") }
+    }
 
     public private(set) var names: [DeviceSlot: String] = [:]
     public private(set) var states: [DeviceSlot: ConnectionState] = [:]
@@ -128,7 +131,7 @@ public final class BluetoothHub: NSObject {
     public func state(of slot: DeviceSlot) -> ConnectionState { states[slot] ?? .disconnected }
 
     public func record(_ message: String) {
-        let t = Date().formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).second(.twoDigits))
+        let t = Date().formatted(.dateTime.day().month(.abbreviated).hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).second(.twoDigits))
         log.insert("\(t)  \(message)", at: 0)
         if log.count > 300 { log.removeLast(log.count - 300) }
         print("[ble] \(message)")

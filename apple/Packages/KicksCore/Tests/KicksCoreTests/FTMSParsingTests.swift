@@ -82,6 +82,7 @@ import Foundation
     @Test func controlPointEncoding() {
         #expect(ControlPoint.setSpeed(kmh: 14.5) == Data([0x02, 0xAA, 0x05]))     // 1450
         #expect(ControlPoint.setIncline(percent: 1.5) == Data([0x03, 0x0F, 0x00]))
+        #expect(ControlPoint.stop() == Data([0x08, 0x01]))
         #expect(ControlPoint.setIncline(percent: -2) == Data([0x03, 0xEC, 0xFF]))
         #expect(ControlPoint.setTargetPower(watts: 250) == Data([0x05, 0xFA, 0x00]))
         #expect(ControlPoint.setSimulation(gradePercent: 4, crr: 0.004, cw: 0.51)

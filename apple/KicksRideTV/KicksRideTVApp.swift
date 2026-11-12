@@ -1,9 +1,11 @@
 import SwiftUI
 import RealityKit
 import KicksCore
+import KicksLink
 
 /// Apple TV app — display + big HUD. Joins the phone over the local network (KicksLink).
-/// For now runs a local demo session so the scene and HUD can be developed on their own.
+/// Until the phone link exists the runner just stands and stretches at 0:00. Launch with
+/// `-kr-demo` for the old looping demo speeds (for checking clip switching).
 @main
 struct KicksRideTVApp: App {
     var body: some SwiftUI.Scene {
@@ -11,14 +13,43 @@ struct KicksRideTVApp: App {
     }
 }
 
-@Observable final class TVSession {
+@MainActor @Observable final class TVSession {
+    /// Latest state from the phone (or the demo). The HUD shows this.
     var state = SessionState()
+    /// True while the phone is in a run.
+    private(set) var running = false
+    /// Where the runner is drawn. Moves smoothly every frame from the belt speed and is pulled
+    /// gently towards the phone's distance, which only arrives about once a second.
+    @ObservationIgnored private(set) var runnerDistance: Double = 0
+    var demo = ProcessInfo.processInfo.arguments.contains("-kr-demo")
+
+    func receive(_ message: LinkMessage) {
+        switch message {
+        case .state(let s):
+            if !running || s.distance + 50 < state.distance { runnerDistance = s.distance }  // new run
+            running = true
+            state = s
+        case .idle:
+            running = false
+            state = SessionState()
+            runnerDistance = 0
+        case .command: break
+        }
+    }
 
     /// Demo until the phone link exists: stand (idles), walk, jog, run, sprint, walk, so the
     /// runner's clip switching and playback-rate matching can be checked.
     static let demoProgramme: [(seconds: Double, kmh: Double)] = [(20, 0), (10, 5), (12, 10), (12, 12.5), (12, 14), (10, 17), (8, 21), (8, 5)]
 
     func tick(_ dt: TimeInterval) {
+        guard demo else {
+            guard running else { return }   // idle: no time, no distance, idle clips
+            if !state.isPaused { runnerDistance += state.speedKmh / 3.6 * dt }
+            let error = state.distance - runnerDistance
+            if abs(error) > 25 { runnerDistance = state.distance }      // big jump: snap
+            else { runnerDistance += error * min(1, dt * 0.8) }         // otherwise ease in
+            return
+        }
         let total = Self.demoProgramme.reduce(0) { $0 + $1.seconds }
         var t = state.elapsed.truncatingRemainder(dividingBy: total)
         for block in Self.demoProgramme {
@@ -26,12 +57,14 @@ struct KicksRideTVApp: App {
             t -= block.seconds
         }
         state.advance(by: dt)
+        runnerDistance = state.distance
     }
 }
 
 struct TVRootView: View {
     @State private var session = TVSession()
     @State private var cameraRig = CameraRig()
+    @State private var link = LinkClient()
     @AppStorage("kr.camera") private var savedCamera = CameraMode.standard.rawValue
 
     var body: some View {
@@ -46,6 +79,17 @@ struct TVRootView: View {
             .padding(40)
             .background(.black.opacity(0.45), in: .rect(cornerRadius: 24))
             .padding(60)
+
+            if !session.running && !session.demo {
+                Text(link.phoneName.map { "Connected to \($0) · start a run on the phone" }
+                     ?? "Looking for the iPhone… open Virtual Trainer on the phone")
+                    .font(.title3)
+                    .foregroundStyle(.white.opacity(0.85))
+                    .padding(.horizontal, 28).padding(.vertical, 14)
+                    .background(.black.opacity(0.45), in: .capsule)
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, 160)
+            }
 
             if let banner = cameraRig.banner {
                 Text(banner)
@@ -66,11 +110,21 @@ struct TVRootView: View {
             switch direction {
             case .left: cameraRig.previous()
             case .right: cameraRig.next()
+            case .up: if session.running { link.send(.speedUp) }
+            case .down: if session.running { link.send(.speedDown) }
             default: break
             }
         }
+        .onPlayPauseCommand {
+            if session.running { link.send(session.state.isPaused ? .resume : .pause) }
+        }
         .onChange(of: cameraRig.mode) { savedCamera = cameraRig.mode.rawValue }
-        .onAppear(perform: configureCamera)
+        .onAppear {
+            configureCamera()
+            link.onMessage = { session.receive($0) }
+            link.onDisconnect = { session.receive(.idle) }
+            link.start()
+        }
     }
 
     private func configureCamera() {

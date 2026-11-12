@@ -7,8 +7,10 @@ public let kicksBonjourType = "_kicksride._tcp"
 
 /// Messages exchanged between phone and TV. JSON, one per framed message.
 public enum LinkMessage: Codable, Sendable, Equatable {
-    /// Phone → TV, several times a second.
+    /// Phone → TV, about once a second during a run (the TV smooths in between).
     case state(SessionState)
+    /// Phone → TV: no run in progress (app open, or the run just ended). TV goes back to idle.
+    case idle
     /// TV → phone (Siri Remote / ring remote presses on the TV side).
     case command(Command)
 
@@ -21,5 +23,3 @@ public enum LinkMessage: Codable, Sendable, Equatable {
         try JSONDecoder().decode(LinkMessage.self, from: data)
     }
 }
-
-// TODO(milestone 2): NWListener (phone) / NWBrowser (TV) with a length-prefixed framer.

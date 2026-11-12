@@ -1,17 +1,24 @@
 import SwiftUI
 import KicksCore
 import KicksFTMS
+import KicksLink
 
 /// iPhone app — the brain. Owns the treadmill connection, workouts, recording and Strava,
-/// and (later) broadcasts live state to the Apple TV. Must work fully on its own (no TV).
+/// and broadcasts live state to any Apple TVs on the network. Must work fully on its own (no TV).
 @main
 struct KicksRideApp: App {
     @State private var hub = BluetoothHub()
+    @State private var link = LinkHost()
 
     var body: some Scene {
         WindowGroup {
             HomeView()
                 .environment(hub)
+                .environment(link)
+                .task {
+                    link.start()
+                    link.send(.idle)
+                }
         }
     }
 }
@@ -64,6 +71,7 @@ enum Screen: String, Hashable { case devices, route, preferences }
 
 struct HomeView: View {
     @Environment(BluetoothHub.self) private var hub
+    @Environment(LinkHost.self) private var link
     @AppStorage(Prefs.route) private var routeID = Route.all[0].id
     @State private var running = false
     @State private var path: [Screen] = []
@@ -87,6 +95,8 @@ struct HomeView: View {
                     NavigationLink(value: Screen.preferences) {
                         Text("Preferences")
                     }
+                    LabeledContent("Apple TV", value: link.displayCount == 0 ? "Not connected"
+                                   : link.displayCount == 1 ? "Connected" : "\(link.displayCount) connected")
                 }
 
                 Section {

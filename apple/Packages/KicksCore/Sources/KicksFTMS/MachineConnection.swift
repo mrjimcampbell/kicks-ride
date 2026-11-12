@@ -94,6 +94,34 @@ public final class MachineConnection: NSObject {
         send(ControlPoint.setIncline(percent: want))
     }
 
+    /// Stop the belt / flywheel (End run). Jumps the queue and drops pending speed/incline
+    /// writes and resends, so nothing can speed the belt back up afterwards.
+    /// Fallbacks, as treadmills differ: STOP refused → try PAUSE; belt still moving after 2 s →
+    /// slow it to the machine's minimum speed (an ordinary speed command). The FR30z (12 Nov)
+    /// acknowledges STOP but ignores it, so on it End always ends in the slow-down.
+    public func stop() {
+        guard canControl else { log("Can't stop the machine from here; use its own stop button"); return }
+        queue.forEach { $0.done(false) }
+        queue.removeAll()
+        speedCheck = nil
+        log("Stopping the \(kind?.rawValue ?? "machine")")
+        send(ControlPoint.stop()) { [weak self] ok in
+            guard let self, !ok else { return }
+            log("STOP refused, trying PAUSE")
+            send(ControlPoint.pause()) { [weak self] ok in
+                if !ok { self?.log("PAUSE refused too") }
+            }
+        }
+        guard kind == .treadmill else { return }
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard let self, hub?.live.isBeltMoving == true, let belt = hub?.live.speedKmh, belt > 1.5 else { return }
+            let slow = speedRange?.min ?? 1
+            log("Belt still at \(String(format: "%.1f", belt)) km/h, slowing to \(String(format: "%.1f", slow))")
+            setSpeed(slow)
+        }
+    }
+
     public func setTargetPower(_ watts: Int) {
         guard kind == .bike, canControl else { return }
         send(ControlPoint.setTargetPower(watts: watts))

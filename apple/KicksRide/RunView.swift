@@ -1,6 +1,7 @@
 import SwiftUI
 import KicksCore
 import KicksFTMS
+import KicksLink
 
 /// A freestyle run: live HUD from the treadmill, strap and footpod; incline per Preferences;
 /// speed nudges for fartlek from the phone. (Workouts, recording and Strava come next.)
@@ -14,9 +15,12 @@ final class RunSession {
 
     func togglePause() { userPaused.toggle() }
 
-    /// This run's incline target (Fixed mode only). Starts at the Preferences value; the
-    /// in-run buttons change it for this run without touching the saved preference.
+    /// This run's incline target. Fixed mode starts it at the Preferences value; in Off mode it
+    /// stays nil (incline untouched) until the runner taps an incline button, which takes over
+    /// incline for this run only. Never changes the saved preference.
     var inclineTarget: Double?
+    /// Set once End is confirmed: no more speed/incline writes.
+    var ended = false
 
     /// Called about once a second.
     func tick(hub: BluetoothHub, inclineMode: InclineMode, inclineFixed: Double) {
@@ -49,9 +53,9 @@ final class RunSession {
         }
 
         // Treadmill control: incline per Preferences (Off never sends anything), speed resends.
-        if let m = hub.machine, live.machineKind == .treadmill {
+        if let m = hub.machine, live.machineKind == .treadmill, !ended {
             if inclineMode == .fixed, inclineTarget == nil { inclineTarget = inclineFixed }
-            m.requestIncline(inclineMode == .fixed ? inclineTarget : nil)
+            m.requestIncline(inclineTarget)
             m.tick()
         }
     }
@@ -59,6 +63,7 @@ final class RunSession {
 
 struct RunView: View {
     @Environment(BluetoothHub.self) private var hub
+    @Environment(LinkHost.self) private var link
     @Environment(\.dismiss) private var dismiss
     @AppStorage(Prefs.inclineMode) private var inclineMode = InclineMode.off.rawValue
     @AppStorage(Prefs.inclineFixed) private var inclineFixed = 1.0
@@ -97,11 +102,12 @@ struct RunView: View {
                     nudge("+0.5 km/h") { m.setSpeed(((s.speedKmh + 0.5) * 2).rounded() / 2) }
                 }
                 .disabled(!hub.live.isBeltMoving)
-                if inclineMode == InclineMode.fixed.rawValue {
-                    HStack(spacing: 16) {
-                        nudge("−0.5 %") { stepIncline(-0.5, m) }
-                        nudge("+0.5 %") { stepIncline(0.5, m) }
-                    }
+                // One press = one treadmill step (the FR30z reports 1 % steps).
+                let step = max(m.inclineRange?.step ?? 1, 0.5)
+                let label = step.rounded() == step ? String(Int(step)) : String(format: "%.1f", step)
+                HStack(spacing: 16) {
+                    nudge("−\(label) %") { stepIncline(-step, m) }
+                    nudge("+\(label) %") { stepIncline(step, m) }
                 }
             }
             HStack(spacing: 16) {
@@ -115,13 +121,27 @@ struct RunView: View {
         .monospacedDigit()
         .onReceive(timer) { _ in
             session.tick(hub: hub, inclineMode: InclineMode(rawValue: inclineMode) ?? .off, inclineFixed: inclineFixed)
+            if !session.ended { link.send(.state(session.state)) }
         }
-        .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
-        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        .onAppear {
+            UIApplication.shared.isIdleTimerDisabled = true
+            link.send(.state(session.state))
+            link.onCommand = handle
+        }
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
+            link.onCommand = nil
+            link.send(.idle)
+        }
         .confirmationDialog("End this run?", isPresented: $confirmEnd, titleVisibility: .visible) {
-            Button("End run", role: .destructive) { dismiss() }
+            Button("End run", role: .destructive) {
+                session.ended = true
+                hub.machine?.stop()
+                link.send(.idle)
+                dismiss()
+            }
         } message: {
-            Text("Saving and Strava upload come in the next step; this run won't be kept yet.")
+            Text("Stops the belt. Saving and Strava upload come in the next step; this run won't be kept yet.")
         }
     }
 
@@ -133,9 +153,23 @@ struct RunView: View {
         }
     }
 
+    /// Siri Remote presses on a TV. End is deliberately not accepted from the TV.
+    private func handle(_ command: LinkMessage.Command) {
+        switch command {
+        case .pause: if !session.userPaused { session.togglePause() }
+        case .resume: if session.userPaused { session.togglePause() }
+        case .speedUp, .speedDown:
+            guard let m = hub.machine, hub.live.machineKind == .treadmill else { return }
+            let v = session.state.speedKmh + (command == .speedUp ? 0.5 : -0.5)
+            m.setSpeed((v * 2).rounded() / 2)
+        default: break
+        }
+    }
+
     private func stepIncline(_ delta: Double, _ m: MachineConnection) {
         let r = m.inclineRange
-        let next = (session.inclineTarget ?? inclineFixed) + delta
+        // Off mode: start from wherever the treadmill is now.
+        let next = (session.inclineTarget ?? hub.live.inclinePercent ?? 0) + delta
         session.inclineTarget = min(max(next, r?.min ?? 0), r?.max ?? 15)
     }
 

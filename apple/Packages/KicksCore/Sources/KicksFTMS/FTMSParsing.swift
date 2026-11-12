@@ -214,6 +214,9 @@ public enum ControlPoint {
     public static func requestControl() -> Data { Data([OpCode.requestControl.rawValue]) }
     /// Never send to a treadmill — the runner starts the belt themselves.
     public static func start() -> Data { Data([OpCode.start.rawValue]) }
+    /// Stop (0x01) rather than pause (0x02). Safe for a treadmill: it only ever slows the belt.
+    public static func stop() -> Data { Data([OpCode.stop.rawValue, 0x01]) }
+    public static func pause() -> Data { Data([OpCode.stop.rawValue, 0x02]) }
 
     public static func setSpeed(kmh: Double) -> Data {
         let v = UInt16(clamping: Int((kmh * 100).rounded()))

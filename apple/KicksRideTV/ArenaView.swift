@@ -60,7 +60,7 @@ struct ArenaView: View {
                 session.tick(event.deltaTime)
                 // Distance is counted along lane 1's measuring line, but the runner is drawn
                 // mid-lane so it looks centred.
-                let p = track.displayPose(distance: session.state.distance)
+                let p = track.displayPose(distance: session.runnerDistance)
                 let feet = SIMD3<Float>(Float(p.x), 0, Float(-p.y))
                 runner.position = feet
                 runner.orientation = simd_quatf(angle: Float(p.heading), axis: [0, 1, 0])
