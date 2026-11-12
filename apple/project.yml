@@ -60,9 +60,20 @@ targets:
         UILaunchScreen: {}
         NSLocalNetworkUsageDescription: Kicks Ride receives your live run from the iPhone.
         NSBonjourServices: [_kicksride._tcp]
+    postBuildScripts:
+      # Copy the paid arena (gitignored; built by tools/arena/build_arena.py) into the app,
+      # picking the .reality compiled for this platform. Missing → app uses a placeholder track.
+      - name: Copy Arena.reality (if built)
+        basedOnDependencyAnalysis: false
+        script: |
+          SRC="${PROJECT_DIR}/../assets/arena/build/arena-${PLATFORM_NAME}.reality"
+          DST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Arena.reality"
+          if [ -f "$SRC" ]; then cp "$SRC" "$DST" && echo "Arena: copied $SRC"
+          else rm -f "$DST"; echo "warning: Arena not built ($SRC) - using placeholder track"; fi
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mrjimcampbell.kicksride.tv
+        ENABLE_USER_SCRIPT_SANDBOXING: NO   # the arena copy reads from ../assets
 
 schemes:
   KicksRide:

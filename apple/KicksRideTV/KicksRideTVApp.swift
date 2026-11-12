@@ -19,7 +19,8 @@ struct TVRootView: View {
     @State private var session = TVSession()
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        // HUD at the top, over the sky, so it never covers the runner.
+        ZStack(alignment: .top) {
             ArenaView(session: session)
             HStack(spacing: 80) {
                 hud(Format.pace(session.state.paceSecondsPerKm), "min/km")

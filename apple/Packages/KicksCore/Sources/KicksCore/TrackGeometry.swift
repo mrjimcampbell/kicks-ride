@@ -15,9 +15,24 @@ public struct TrackGeometry: Sendable, Equatable {
     public var lane1Offset: Double = 0.30
     public var otherLaneOffset: Double = 0.20
 
+    /// Treadmill distance that equals one lap of lane 1, whatever this track's real lap length.
+    /// Lets a non-spec model (e.g. the JG3D arena, lane 1 ≈ 390.8 m) still lap every 400 m.
+    public var nominalLap: Double = 400
+
     public init() {}
 
+    public init(straightLength: Double, kerbRadius: Double, laneWidth: Double, laneCount: Int = 8) {
+        self.straightLength = straightLength
+        self.kerbRadius = kerbRadius
+        self.laneWidth = laneWidth
+        self.laneCount = laneCount
+    }
+
     public static let standard = TrackGeometry()
+
+    /// The JG3D "Track And Field Arena" as measured in Blender (inner kerb of Track_Lanes).
+    /// Not to spec: shorter straights, tighter bends, wider lanes.
+    public static let jg3dArena = TrackGeometry(straightLength: 82.612, kerbRadius: 35.596, laneWidth: 1.369)
 
     /// Radius of the measured running line for a lane (1-based).
     public func runningRadius(lane: Int) -> Double {
@@ -31,12 +46,12 @@ public struct TrackGeometry: Sendable, Equatable {
     }
 
     /// Position and heading for a distance run.
-    /// Treadmill distance is mapped 1:1 onto lane 1; for other lanes the distance is scaled so a
-    /// lap still equals 400 m of treadmill distance (the runner just looks wider).
+    /// Every `nominalLap` metres of treadmill distance is one lap of the chosen lane, so on a
+    /// spec track lane 1 is 1:1, and other lanes / non-spec models are scaled to fit.
     public func pose(distance: Double, lane: Int = 1) -> (x: Double, y: Double, heading: Double) {
         let r = runningRadius(lane: lane)
         let lap = lapLength(lane: lane)
-        let scaled = distance * lap / lapLength(lane: 1)
+        let scaled = distance * lap / nominalLap
         var d = scaled.truncatingRemainder(dividingBy: lap)
         if d < 0 { d += lap }
         let half = straightLength / 2

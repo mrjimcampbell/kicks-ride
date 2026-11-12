@@ -36,6 +36,18 @@ Repo: github.com/mrjimcampbell/kicks-ride (public, GitHub Pages from `main` root
 6. **Exact 400 m**: lane 1 measured 0.30 m from the inner kerb; straights 84.39 m, inner kerb bend radius 36.5 m. Verify/rescale the arena's track; overlay an exact-spec track surface if its markings are off. Runner position = treadmill distance mod 400 along lane 1 (or a chosen lane, scaled).
 7. Free Apple developer account for now (7-day reinstall; automate rebuild later). Paid account if it gets annoying.
 
+## Native apps — state as of 12 Nov 2026
+- `apple/project.yml` (XcodeGen; run `xcodegen` in `apple/` after adding files — the .xcodeproj is generated and gitignored). Xcode 27.2; `xcode-select` points at CommandLineTools, so CLI builds need `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`. Signing: copy `apple/Config/Local.xcconfig.example` → `Local.xcconfig` (gitignored) with the Personal Team ID.
+- `apple/Packages/KicksCore` (iOS/tvOS 26): `KicksCore` (SessionState, Workout, TrackGeometry + tests), `KicksFTMS` (UUIDs only — port from index.html next), `KicksLink` (LinkMessage; Bonjour `_kicksride._tcp` not built yet), `KicksRecording` (relay URL only).
+- iPhone app: demo HUD. tvOS app: loads `Arena.reality` if built, runner box laps the arena's lane 1 in a chase cam, HUD across the top. Both verified in simulators.
+- **Arena pipeline**: `tools/arena/build_arena.py` (run headless, see its docstring) → `assets/arena/build/` (gitignored): `arena.usdz` + `arena-appletvos.reality` / `arena-appletvsimulator.reality` (realitytool, GPU-compressed). A tvOS build phase copies the matching one in; without it the app draws an exact-spec placeholder.
+  - Strips whole elements, never decimates (Jim's call): Net + Pillars (discus cage) gone → 196.5k → 144k verts. Cameras/lights stripped.
+  - Textures sized by visibility (Track2.0 atlas BaseColor 4K, Stand/ChainLink/other Track2.0 2K, tiling grass/asphalt/rubber 1K); near-flat roughness maps → constants. Jim may replace textures wholesale later; normal/roughness use to be revisited during look-dev.
+  - Gotchas handled: Blender's USDZ packer drops images shared by two materials (so: .usdc + Apple `usdzip`); Track2.0 BaseColor/Roughness get written as .png while referenced as .jpg (converted with sips). ChainLink_BaseColor must stay PNG (alpha).
+- **Arena track measured (not to spec)**: real metres, unit scale 1; track centre Blender (−6.420, 4.002), surface z 0.538. Inner kerb radius 35.596 m, straights 82.612 m, 8 lanes × 1.369 m → lane 1 ≈ 390.8 m. Decision: don't rescale; `TrackGeometry.jg3dArena` + `nominalLap = 400` maps 400 m of treadmill onto one lap of the arena's own lane 1.
+- Runner: Jim has `assets/free_pack_human_skeleton.fbx`, will rig in Mixamo (Idle / Walking / Running, In Place). Plan: USDZ, crossfade walk↔run by belt speed, scale playback to stop foot slide.
+- Pushing: Claude's sandboxed shell can't read the keychain; push via the user's Terminal panel (`gh` is logged in).
+
 ## Roadmap (suggested order)
 1. iPhone app MVP: FTMS treadmill (port logic from index.html), workouts + builder, live HUD, TCX + Strava upload via the existing relay, HR strap. Usable on its own.
 2. tvOS app: arena in RealityKit, runner lapping the track in sync, big HUD, receives live state from the phone.

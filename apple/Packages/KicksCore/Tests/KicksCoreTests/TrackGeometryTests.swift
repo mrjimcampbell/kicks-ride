@@ -28,6 +28,14 @@ import Testing
         }
     }
 
+    @Test func arenaLapsEveryFourHundredMetres() {
+        let a = TrackGeometry.jg3dArena
+        #expect(abs(a.lapLength(lane: 1) - 390.77) < 0.05)
+        let start = a.pose(distance: 0), lap = a.pose(distance: 400)
+        #expect(abs(start.x - lap.x) < 1e-6 && abs(start.y - lap.y) < 1e-6)
+        #expect(abs(a.pose(distance: 200).y - a.runningRadius(lane: 1)) < 1e-6)
+    }
+
     @Test func halfLapIsOnBackStraight() {
         let p = t.pose(distance: 200)
         #expect(abs(p.y - t.runningRadius(lane: 1)) < 1e-6)
