@@ -61,15 +61,22 @@ targets:
         NSLocalNetworkUsageDescription: Kicks Ride receives your live run from the iPhone.
         NSBonjourServices: [_kicksride._tcp]
     postBuildScripts:
-      # Copy the paid arena (gitignored; built by tools/arena/build_arena.py) into the app,
-      # picking the .reality compiled for this platform. Missing → app uses a placeholder track.
-      - name: Copy Arena.reality (if built)
+      # Copy gitignored built assets into the app (never committed):
+      #  - the paid arena (tools/arena/build_arena.py), the .reality compiled for this platform
+      #  - the runner clips (tools/runner/build_runner.py)
+      # Missing → the app falls back to a placeholder track / runner.
+      - name: Copy built assets (if built)
         basedOnDependencyAnalysis: false
         script: |
-          SRC="${PROJECT_DIR}/../assets/arena/build/arena-${PLATFORM_NAME}.reality"
-          DST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Arena.reality"
-          if [ -f "$SRC" ]; then cp "$SRC" "$DST" && echo "Arena: copied $SRC"
-          else rm -f "$DST"; echo "warning: Arena not built ($SRC) - using placeholder track"; fi
+          RES="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}"
+          ASSETS="${PROJECT_DIR}/../assets"
+          SRC="$ASSETS/arena/build/arena-${PLATFORM_NAME}.reality"
+          if [ -f "$SRC" ]; then cp "$SRC" "$RES/Arena.reality" && echo "Arena: copied $SRC"
+          else rm -f "$RES/Arena.reality"; echo "warning: Arena not built - using placeholder track"; fi
+          rm -f "$RES"/runner_*.usdz
+          if ls "$ASSETS"/runner/build/runner_*.usdz >/dev/null 2>&1; then
+            cp "$ASSETS"/runner/build/runner_*.usdz "$RES/" && echo "Runner: copied clips"
+          else echo "warning: Runner not built - using placeholder box"; fi
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mrjimcampbell.kicksride.tv

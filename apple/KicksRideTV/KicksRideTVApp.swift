@@ -12,7 +12,21 @@ struct KicksRideTVApp: App {
 }
 
 @Observable final class TVSession {
-    var state: SessionState = { var s = SessionState(); s.speedKmh = 14; return s }()
+    var state = SessionState()
+
+    /// Demo until the phone link exists: alternate a walk and a run so the runner's
+    /// walk ↔ run switching and playback-rate matching can be checked.
+    static let demoProgramme: [(seconds: Double, kmh: Double)] = [(15, 5), (25, 14), (10, 9), (20, 18)]
+
+    func tick(_ dt: TimeInterval) {
+        let total = Self.demoProgramme.reduce(0) { $0 + $1.seconds }
+        var t = state.elapsed.truncatingRemainder(dividingBy: total)
+        for block in Self.demoProgramme {
+            if t < block.seconds { state.speedKmh = block.kmh; break }
+            t -= block.seconds
+        }
+        state.advance(by: dt)
+    }
 }
 
 struct TVRootView: View {

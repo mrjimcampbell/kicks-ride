@@ -1,0 +1,93 @@
+"""Build runner USDZ files for RealityKit from Mixamo FBX downloads (one clip per FBX).
+
+Run headless from the repo root:
+  /Applications/Blender.app/Contents/MacOS/Blender -b --factory-startup \
+    --python tools/runner/build_runner.py
+
+Inputs  (gitignored): assets/runner/<clip source>.fbx — Mixamo, "In Place", with skin.
+Outputs (gitignored): assets/runner/build/runner_<clip>.usdz — mesh + skeleton + one looping clip.
+
+The app loads one file as the character and plays the other files' clips on it (same rig).
+Each clip's natural speed (m/s at playback rate 1, measured from foot contact) is printed so it
+can be copied into RunnerAnimator.clips — that's what keeps the feet from sliding.
+"""
+import os
+import statistics
+import bpy
+
+REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+SRC = os.path.join(REPO, "assets", "runner")
+OUT = os.path.join(SRC, "build")
+
+# clip name -> source FBX (add Jogging / Idle here when downloaded)
+CLIPS = {
+    "run": "Running.fbx",
+    "walk": "Standard Walk.fbx",
+}
+
+BONE_COLOUR = (0.86, 0.83, 0.75, 1.0)  # ivory instead of Mixamo's flat grey
+
+
+def log(msg):
+    print(f"build_runner: {msg}", flush=True)
+
+
+def natural_speed(arm, f0, f1):
+    """Median ground speed of the planted feet = travel speed with no foot slide."""
+    sc = bpy.context.scene
+    fps = sc.render.fps
+    speeds = []
+    for bone in ("mixamorig:LeftToeBase", "mixamorig:RightToeBase"):
+        pts = []
+        for i in range((f1 - f0) * 8 + 1):
+            t = f0 + i / 8
+            sc.frame_set(int(t), subframe=t - int(t))
+            pts.append((t, (arm.matrix_world @ arm.pose.bones[bone].head).copy()))
+        zmin = min(p.z for _, p in pts)
+        speeds += [abs(b.y - a.y) / ((tb - ta) / fps)
+                   for (ta, a), (tb, b) in zip(pts, pts[1:])
+                   if a.z < zmin + 0.015 and b.z < zmin + 0.015]
+    return statistics.median(speeds)
+
+
+def build(clip, fbx):
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    bpy.ops.import_scene.fbx(filepath=os.path.join(SRC, fbx))
+    sc = bpy.context.scene
+    arm = next(o for o in bpy.data.objects if o.type == "ARMATURE")
+    f0, f1 = map(int, arm.animation_data.action.frame_range)
+
+    v = natural_speed(arm, f0, f1)
+    cycle = (f1 - f0) / sc.render.fps
+    log(f"{clip}: {f1 - f0} frames, cycle {cycle:.3f}s ({round(120 / cycle)} spm), "
+        f"natural speed {v:.2f} m/s ({v * 3.6:.1f} km/h)")
+
+    for mat in bpy.data.materials:
+        bsdf = next((n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None)
+        if bsdf:
+            bsdf.inputs["Base Color"].default_value = BONE_COLOUR
+            bsdf.inputs["Roughness"].default_value = 0.6
+
+    # Mixamo's last frame repeats the first; drop it so the loop doesn't hitch.
+    sc.frame_start, sc.frame_end = f0, f1 - 1
+
+    os.makedirs(OUT, exist_ok=True)
+    out = os.path.join(OUT, f"runner_{clip}.usdz")
+    bpy.ops.wm.usd_export(
+        filepath=out,
+        selected_objects_only=False,
+        export_animation=True,
+        export_armatures=True,
+        only_deform_bones=True,
+        export_materials=True,
+        generate_preview_surface=True,
+        convert_orientation=True,
+        export_global_up_selection="Y",
+        export_cameras=False,
+        export_lights=False,
+    )
+    log(f"wrote {out} ({os.path.getsize(out) / 1e6:.1f} MB)")
+
+
+for clip, fbx in CLIPS.items():
+    build(clip, fbx)

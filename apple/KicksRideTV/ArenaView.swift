@@ -30,9 +30,19 @@ struct ArenaView: View {
                 track = .standard
             }
 
-            let runner = ModelEntity(
-                mesh: .generateBox(width: 0.45, height: 1.8, depth: 0.3, cornerRadius: 0.1),
-                materials: [SimpleMaterial(color: .white, isMetallic: false)])
+            // Runner: animated Mixamo character if built, else a placeholder box. Origin at the feet.
+            let animator = await RunnerAnimator.load()
+            let runner: Entity
+            if let animator {
+                runner = animator.entity
+            } else {
+                let box = ModelEntity(
+                    mesh: .generateBox(width: 0.45, height: 1.8, depth: 0.3, cornerRadius: 0.1),
+                    materials: [SimpleMaterial(color: .white, isMetallic: false)])
+                box.position.y = 0.9
+                runner = Entity()
+                runner.addChild(box)
+            }
             root.addChild(runner)
 
             let camera = PerspectiveCamera()
@@ -47,14 +57,16 @@ struct ArenaView: View {
             content.add(root)
 
             _ = content.subscribe(to: SceneEvents.Update.self) { event in
-                session.state.advance(by: event.deltaTime)
+                session.tick(event.deltaTime)
                 let p = track.pose(distance: session.state.distance)
-                let pos = SIMD3<Float>(Float(p.x), 0.9, Float(-p.y))
+                let feet = SIMD3<Float>(Float(p.x), 0, Float(-p.y))
                 let forward = SIMD3<Float>(Float(cos(p.heading)), 0, Float(-sin(p.heading)))
-                runner.position = pos
+                runner.position = feet
                 runner.orientation = simd_quatf(angle: Float(p.heading), axis: [0, 1, 0])
-                // Chase camera: behind and above, looking just ahead of the runner.
-                camera.look(at: pos + forward * 4, from: pos - forward * 7 + [0, 3, 0], relativeTo: nil)
+                animator?.update(speed: session.state.isPaused ? 0 : session.state.speedKmh / 3.6)
+                // Chase camera: behind and above, looking just ahead of the runner's waist.
+                let waist = feet + [0, 0.9, 0]
+                camera.look(at: waist + forward * 4, from: waist - forward * 7 + [0, 3, 0], relativeTo: nil)
             }
         }
     }
