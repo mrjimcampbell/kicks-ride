@@ -107,7 +107,7 @@ struct HomeView: View {
                     }
                 }
             }
-            .navigationTitle("Kicks Ride")
+            .navigationTitle(AppInfo.name)
             .navigationDestination(for: Screen.self) { screen in
                 switch screen {
                 case .devices: DevicesView()
@@ -213,4 +213,9 @@ struct PreferencesView: View {
         }
         .navigationTitle("Preferences")
     }
+}
+
+/// The app's shown name comes from CFBundleDisplayName in project.yml — rename it there only.
+enum AppInfo {
+    static let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Trainer"
 }

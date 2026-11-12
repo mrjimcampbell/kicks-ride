@@ -35,7 +35,7 @@ struct DevicesView: View {
     private var bluetoothWarning: String? {
         switch hub.bluetoothState {
         case .poweredOff: "Bluetooth is off. Turn it on in Control Centre."
-        case .unauthorized: "Kicks Ride isn't allowed to use Bluetooth. Allow it in Settings › Kicks Ride."
+        case .unauthorized: "\(AppInfo.name) isn't allowed to use Bluetooth. Allow it in Settings › \(AppInfo.name)."
         case .unsupported: "Bluetooth isn't available on this device (the simulator has none)."
         default: nil
         }

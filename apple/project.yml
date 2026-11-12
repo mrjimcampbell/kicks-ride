@@ -33,11 +33,11 @@ targets:
     info:
       path: KicksRide/Info.plist
       properties:
-        CFBundleDisplayName: Kicks Ride
+        CFBundleDisplayName: Virtual Trainer
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
-        NSBluetoothAlwaysUsageDescription: Kicks Ride connects to your treadmill, bike and heart-rate strap.
-        NSLocalNetworkUsageDescription: Kicks Ride sends your live run to the Apple TV display.
+        NSBluetoothAlwaysUsageDescription: Connects to your treadmill, bike and heart-rate strap.
+        NSLocalNetworkUsageDescription: Sends your live run to the Apple TV display.
         NSBonjourServices: [_kicksride._tcp]
         # Keep the treadmill connection alive when the phone is locked / you're watching YouTube.
         UIBackgroundModes: [bluetooth-central]
@@ -56,9 +56,9 @@ targets:
     info:
       path: KicksRideTV/Info.plist
       properties:
-        CFBundleDisplayName: Kicks Ride
+        CFBundleDisplayName: Virtual Trainer
         UILaunchScreen: {}
-        NSLocalNetworkUsageDescription: Kicks Ride receives your live run from the iPhone.
+        NSLocalNetworkUsageDescription: Receives your live run from the iPhone.
         NSBonjourServices: [_kicksride._tcp]
     postBuildScripts:
       # Copy gitignored built assets into the app (never committed):
