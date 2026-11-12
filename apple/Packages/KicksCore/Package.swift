@@ -22,6 +22,6 @@ let package = Package(
         .target(name: "KicksLink", dependencies: ["KicksCore"]),
         // TCX writer + Strava upload via the existing Cloudflare relay.
         .target(name: "KicksRecording", dependencies: ["KicksCore"]),
-        .testTarget(name: "KicksCoreTests", dependencies: ["KicksCore", "KicksLink"]),
+        .testTarget(name: "KicksCoreTests", dependencies: ["KicksCore", "KicksLink", "KicksFTMS"]),
     ]
 )
