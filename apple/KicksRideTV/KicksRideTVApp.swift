@@ -16,7 +16,7 @@ struct KicksRideTVApp: App {
 
     /// Demo until the phone link exists: stand (idles), walk, jog, run, sprint, walk, so the
     /// runner's clip switching and playback-rate matching can be checked.
-    static let demoProgramme: [(seconds: Double, kmh: Double)] = [(28, 0), (12, 5), (15, 10), (15, 14), (10, 18), (8, 5)]
+    static let demoProgramme: [(seconds: Double, kmh: Double)] = [(20, 0), (10, 5), (12, 10), (12, 12.5), (12, 14), (10, 17), (8, 21), (8, 5)]
 
     func tick(_ dt: TimeInterval) {
         let total = Self.demoProgramme.reduce(0) { $0 + $1.seconds }

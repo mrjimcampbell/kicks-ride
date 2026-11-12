@@ -21,12 +21,19 @@ OUT = os.path.join(SRC, "build")
 
 # clip name -> source FBX (add Jogging / Idle here when downloaded)
 CLIPS = {
-    "run": "Running.fbx",
-    "jog": "Running_slower.fbx",
-    "walk": "Standard Walk.fbx",
-    "idle_arms": "Arm Stretching.fbx",   # idle clips: no travel speed; the app alternates them
+    # Locomotion, slowest -> fastest. Chosen so each clip's step length matches Jim's at the
+    # speeds it covers (Garmin: ~1.02 m at 10 km/h -> ~1.32 m at 14 km/h, cadence 165-175).
+    "walk": "Standard Walk.fbx",      # 4.9 km/h
+    "jog": "Jogging.fbx",             # 3 strides per loop, step ~0.97 m
+    "run": "Running_02.fbx",          # step ~1.26 m
+    "fast": "Medium Run.fbx",         # step ~1.55 m
+    "sprint": "Running.fbx",          # step ~1.96 m; also provides the character mesh
+    # Idles: no travel speed; the app alternates them while the belt is stopped.
+    "idle_arms": "Arm Stretching.fbx",
     "idle_neck": "Neck Stretching.fbx",
 }
+# Downloaded but not used: Running_slower (similar to Jogging), Standard Run and Run Forward
+# (sprint strides like Running).
 
 BONE_COLOUR = (0.86, 0.83, 0.75, 1.0)  # ivory instead of Mixamo's flat grey
 
@@ -53,6 +60,30 @@ def natural_speed(arm, f0, f1):
     return statistics.median(speeds)
 
 
+def steps_per_loop(arm, f0, f1):
+    """Steps in the loop. Mixamo loops can hold several strides, so find how many times the
+    left foot's height pattern repeats within the loop (2 steps per repeat)."""
+    sc = bpy.context.scene
+    n = (f1 - f0) * 4
+    zs = []
+    for i in range(n):
+        t = f0 + i / 4
+        sc.frame_set(int(t), subframe=t - int(t))
+        zs.append((arm.matrix_world @ arm.pose.bones["mixamorig:LeftToeBase"].head).z)
+    mean = sum(zs) / n
+    d = [z - mean for z in zs]
+    var = sum(x * x for x in d) or 1e-9
+
+    def corr(lag):
+        return sum(d[i] * d[(i + lag) % n] for i in range(n)) / var
+
+    best = 1
+    for k in range(2, 6):  # k strides per loop -> the pattern repeats every n/k samples
+        if corr(round(n / k)) > 0.85:
+            best = k
+    return 2 * best
+
+
 def build(clip, fbx):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.fbx(filepath=os.path.join(SRC, fbx))
@@ -65,8 +96,9 @@ def build(clip, fbx):
         log(f"{clip}: {f1 - f0} frames, {cycle:.2f}s")
     else:
         v = natural_speed(arm, f0, f1)
-        log(f"{clip}: {f1 - f0} frames, cycle {cycle:.3f}s ({round(120 / cycle)} spm), "
-            f"natural speed {v:.2f} m/s ({v * 3.6:.1f} km/h)")
+        spm = steps_per_loop(arm, f0, f1) * 60 / cycle
+        log(f"{clip}: {f1 - f0} frames, {spm:.0f} spm, natural speed {v:.2f} m/s "
+            f"({v * 3.6:.1f} km/h), step {v / (spm / 60):.2f} m")
 
     for mat in bpy.data.materials:
         bsdf = next((n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None)

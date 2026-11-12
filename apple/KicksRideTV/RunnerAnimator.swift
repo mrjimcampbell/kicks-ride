@@ -20,17 +20,20 @@ final class RunnerAnimator {
     }
 
     /// Ordered slowest → fastest. Natural speeds come from build_runner.py's output.
-    /// The jog → run switch (3.6 m/s ≈ 13 km/h) sits where both are equally far off their natural
-    /// speed; a clip that looks right at ~14 km/h would close that gap.
+    /// Clips were chosen so each one's step length matches Jim's at the speeds it covers
+    /// (Garmin: ~1.02 m at 10 km/h → ~1.32 m at 14 km/h, cadence 160–175); switch points sit
+    /// where his step length is halfway between neighbouring clips'.
     static let clips: [Clip] = [
-        Clip(name: "walk", naturalSpeed: 1.37, fromSpeed: 0,   minRate: 0.5,  maxRate: 1.5),
-        Clip(name: "jog",  naturalSpeed: 2.30, fromSpeed: 1.8, minRate: 0.75, maxRate: 1.65),
-        Clip(name: "run",  naturalSpeed: 5.59, fromSpeed: 3.6, minRate: 0.6,  maxRate: 1.25),
+        Clip(name: "walk",   naturalSpeed: 1.37, fromSpeed: 0,    minRate: 0.5, maxRate: 1.5),   // < 7 km/h
+        Clip(name: "jog",    naturalSpeed: 2.27, fromSpeed: 1.94, minRate: 0.8, maxRate: 1.5),   // 7–11.3
+        Clip(name: "run",    naturalSpeed: 3.03, fromSpeed: 3.14, minRate: 0.9, maxRate: 1.45),  // 11.3–15
+        Clip(name: "fast",   naturalSpeed: 4.03, fromSpeed: 4.17, minRate: 0.9, maxRate: 1.45),  // 15–19.6
+        Clip(name: "sprint", naturalSpeed: 5.59, fromSpeed: 5.44, minRate: 0.9, maxRate: 1.3),   // 19.6+
     ]
     /// Played in turn while stopped. Optional: if missing, the runner holds its pose.
     static let idleClips = ["idle_arms", "idle_neck"]
     /// The file that provides the character mesh and rig.
-    static let characterClip = "run"
+    static let characterClip = "sprint"
     /// Below this belt speed (m/s) the runner is standing.
     static let standingSpeed = 0.3
     /// Speed band (m/s) either side of a switch point that must be crossed before switching back.
