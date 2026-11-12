@@ -33,14 +33,16 @@ final class RunSession {
 
         if !state.isPaused {
             state.elapsed += dt
-            // Prefer the machine's own distance count; fall back to integrating speed.
-            if let d = live.machineDistance, let last = lastMachineDistance, d >= last, d - last < 50 {
-                state.distance += d - last
-            } else if live.machineDistance == nil {
-                state.distance += state.speedKmh / 3.6 * dt
-            }
+            // Integrate belt speed (what the web app did; the FR30z's own distance field didn't
+            // advance in the first hardware test). The machine count is only logged for now.
+            state.distance += state.speedKmh / 3.6 * dt
         }
-        lastMachineDistance = live.machineDistance
+        if let d = live.machineDistance, d != lastMachineDistance {
+            if lastMachineDistance == nil || Int(d) / 100 != Int(lastMachineDistance!) / 100 {
+                hub.record("machine distance field: \(Int(d)) m (app: \(Int(state.distance)) m)")
+            }
+            lastMachineDistance = d
+        }
 
         // Treadmill control: incline per Preferences (Off never sends anything), speed resends.
         if let m = hub.machine, live.machineKind == .treadmill {
