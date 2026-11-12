@@ -53,6 +53,7 @@ struct ArenaView: View {
 
             // Sky, sun, image-based light and floodlights (look-dev presets).
             root.addChild(skyRig.root)
+            skyRig.track = track
             skyRig.addReceivers(to: root)
             await skyRig.apply()
 

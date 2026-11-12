@@ -4,13 +4,17 @@ import CoreGraphics
 import ImageIO
 import Observation
 import UIKit
+import KicksCore
 
 /// Look-dev rig for sky, light and mood: a time of day × a weather.
 /// - Sky: an HDRI for image-based lighting (1K .hdr, never seen directly) plus the same HDRI's
 ///   tonemapped panorama on an unlit dome that follows the camera.
 /// - Sun: a directional light with shadows at the HDRI's brightest point (clear weather only).
 /// - Floodlights on the six masts at night and dusk (spot lights with shadows + glow sprites).
-/// - Rain: falling streaks around the camera, a wet (glossy, darker) track, dimmer sky.
+/// - Rain: falling streaks + ground splashes around the camera, a wet (glossy, darker) track,
+///   puddles, dimmer sky. Fog: layered mist shells round the camera (a cheap fake; no
+///   real volumetrics in RealityKit). Light beams from the masts in rain/fog after dark.
+/// - Bloom (tvOS 27+) on the emissive lamp faces when the floodlights are on.
 /// Skies come from tools/sky/fetch_skies.sh (Poly Haven, CC0), copied in by a build phase.
 /// Remote while idle: up/down = time of day, click = weather.
 /// Launch args: `-kr-sky <time>` and `-kr-weather <weather>`.
@@ -47,7 +51,7 @@ enum TimeOfDay: String, CaseIterable, Identifiable {
 }
 
 enum Weather: String, CaseIterable, Identifiable {
-    case clear, overcast, rain
+    case clear, overcast, rain, fog
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
 }
@@ -71,6 +75,14 @@ final class SkyRig {
     @ObservationIgnored private var floods: [SpotLight] = []
     @ObservationIgnored private var glows: [Entity] = []
     @ObservationIgnored private let rain = Entity()
+    @ObservationIgnored private let splashes = Entity()
+    @ObservationIgnored private let puddles = Entity()
+    @ObservationIgnored private let fog = Entity()
+    @ObservationIgnored private var fogShells: [ModelEntity] = []
+    @ObservationIgnored private var beams: [Entity] = []
+    @ObservationIgnored private var lampFaces: [Entity] = []
+    /// Set by ArenaView before `addReceivers`, so puddles land on the lanes.
+    @ObservationIgnored var track: TrackGeometry?
     @ObservationIgnored private var wetSurfaces: [(entity: ModelEntity, dry: [any RealityKit.Material])] = []
     @ObservationIgnored private var bannerTask: Task<Void, Never>?
     @ObservationIgnored private var applied: String?
@@ -112,11 +124,40 @@ final class SkyRig {
             let disc = ModelEntity(mesh: .generatePlane(width: 14, height: 14), materials: [m])
             glow.addChild(disc)
             glows.append(glow)
+
+            // Lamp face: a bright emissive panel facing the track (what bloom catches).
+            var face = PhysicallyBasedMaterial()
+            face.baseColor = .init(tint: .white)
+            face.emissiveColor = .init(color: .init(red: 1, green: 0.95, blue: 0.85, alpha: 1))
+            face.emissiveIntensity = 12
+            let panel = ModelEntity(mesh: .generateBox(width: 3.2, height: 2.6, depth: 0.1), materials: [face])
+            panel.transform = s.transform
+            panel.position = head + [0, 0.3, 0]
+            lampFaces.append(panel)
+            root.addChild(panel)
+
+            // Beam: a soft cone of light down the spot's axis, only in rain/fog after dark.
+            let beam = ModelEntity(mesh: Self.coneMesh(length: 70, radius: 26), materials: [Self.beamMaterial])
+            beam.transform = s.transform
+            beams.append(beam)
+            root.addChild(beam)
             root.addChild(glow)
         }
 
         rain.components.set(Self.rainEmitter())
         root.addChild(rain)
+        splashes.components.set(Self.splashEmitter())
+        root.addChild(splashes)
+        root.addChild(puddles)
+
+        // Fog: camera-centred open cylinders; each hides a little more of what lies beyond it,
+        // so distant things fade (in steps — a cheap stand-in for real distance fog).
+        for r: Float in [12, 18, 26, 38, 55, 80, 115, 165, 240, 350] {
+            let shell = ModelEntity(mesh: Self.shellMesh(radius: r, height: 70), materials: [UnlitMaterial()])
+            fogShells.append(shell)
+            fog.addChild(shell)
+        }
+        root.addChild(fog)
     }
 
     /// Every model in the scene lights from our HDRI rather than RealityKit's default. Also
@@ -154,6 +195,8 @@ final class SkyRig {
         let p = camera.position(relativeTo: nil)
         dome.position = p
         rain.position = p + [0, 14, 0]
+        splashes.position = [p.x, 0.03, p.z]
+        fog.position = [p.x, 0, p.z]
     }
 
     func nextTime() { time = Self.step(time, 1) }
@@ -175,6 +218,30 @@ final class SkyRig {
         Task { await apply() }
     }
 
+    /// Scatter puddles over the lanes (fixed seed, so they're always in the same places).
+    private func buildPuddles() {
+        guard puddles.children.isEmpty, let track else { return }
+        var rng = SplitMix(seed: 7)
+        let tex = try? TextureResource(image: Self.puddleImage(), options: .init(semantic: .raw))
+        var m = PhysicallyBasedMaterial()
+        m.baseColor = .init(tint: .init(white: 0.05, alpha: 1))
+        m.roughness = .init(floatLiteral: 0.02)
+        m.metallic = .init(floatLiteral: 0)
+        m.specular = .init(floatLiteral: 1)
+        if let tex { m.blending = .transparent(opacity: .init(scale: 0.85, texture: .init(tex))) }
+        for _ in 0..<70 {
+            let d = Double(rng.next() % 400)
+            let lane = 1 + Int(rng.next() % 8)
+            let p = track.displayPose(distance: d, lane: lane)
+            let w = 0.6 + Float(rng.next() % 100) / 100 * 1.6
+            let puddle = ModelEntity(mesh: .generatePlane(width: w, depth: w * 0.7), materials: [m])
+            puddle.position = [Float(p.x), 0.006, Float(-p.y)]
+            puddle.orientation = simd_quatf(angle: Float(rng.next() % 628) / 100, axis: [0, 1, 0])
+            puddle.components.set(ImageBasedLightReceiverComponent(imageBasedLight: ibl))
+            puddles.addChild(puddle)
+        }
+    }
+
     func apply() async {
         let t = time, w = weather
         let key = "\(t.rawValue).\(w.rawValue)"
@@ -184,7 +251,7 @@ final class SkyRig {
         let yaw = simd_quatf(angle: look.yawDegrees * .pi / 180, axis: [0, 1, 0])
         // Grey skies by day come from the overcast HDRI; at night the night sky, dimmed.
         let file = (w == .clear || t.isDark) ? t.rawValue : "overcast"
-        let gloom: Float = w == .clear ? 1 : (w == .overcast ? 0.75 : 0.5)
+        let gloom: Float = w == .clear ? 1 : (w == .rain ? 0.5 : 0.75)
         var iblExposure = file == "overcast" ? (w == .rain ? 0.4 : 0.9) : look.iblExposure
         if t.isDark && w != .clear { iblExposure -= 0.7 }
         if t == .dusk && w != .clear { iblExposure = -0.8 }
@@ -226,9 +293,37 @@ final class SkyRig {
         let lumens: Float = t.isDark ? 25_000_000 : 10_000_000
         for f in floods { f.isEnabled = t.lightsOn; f.light.intensity = t.lightsOn ? lumens : 0 }
         for g in glows { g.isEnabled = t.lightsOn }
+        for f in lampFaces { f.isEnabled = t.lightsOn }
+        for b in beams { b.isEnabled = t.lightsOn && (w == .rain || w == .fog) }
+        if #available(tvOS 27.0, *) {
+            if t.lightsOn {
+                root.components.set(BloomComponent(scope: .unbounded))
+                var o = BloomOptionsComponent()
+                o.strength = 0.6; o.threshold = 1.0; o.blurRadius = 24
+                root.components.set(o)
+            } else {
+                root.components.remove(BloomComponent.self)
+            }
+        }
+
+        // Mist: thick in fog, a light haze in rain, none otherwise. Colour follows the light.
+        let mistAlpha: Float = w == .fog ? 0.17 : (w == .rain ? 0.045 : 0)   // per layer (10 layers)
+        fog.isEnabled = mistAlpha > 0
+        if mistAlpha > 0 {
+            // Night mist is lighter than the sky: it glows in the floodlights.
+            let c: SIMD3<Float> = t.isDark ? [0.30, 0.31, 0.34] : t == .dusk ? [0.40, 0.36, 0.42]
+                : t == .golden ? [0.85, 0.75, 0.6] : [0.78, 0.80, 0.83]
+            let tex = try? await TextureResource(image: Self.mistImage(colour: c, alpha: mistAlpha), options: .init(semantic: .color))
+            var m = UnlitMaterial()
+            if let tex { m.color = .init(tint: .white, texture: .init(tex)); m.blending = .transparent(opacity: .init(floatLiteral: 1)) }
+            for shell in fogShells { shell.model?.materials = [m] }
+        }
 
         // Rain: streaks on, track wet (glossier and darker).
         rain.isEnabled = w == .rain
+        splashes.isEnabled = w == .rain
+        buildPuddles()
+        puddles.isEnabled = w == .rain
         for s in wetSurfaces {
             s.entity.model?.materials = w == .rain ? s.dry.map(Self.wet) : s.dry
         }
@@ -241,6 +336,30 @@ final class SkyRig {
         pbr.specular = .init(floatLiteral: 0.8)
         pbr.baseColor.tint = .init(white: 0.7, alpha: 1)
         return pbr
+    }
+
+    private static func splashEmitter() -> ParticleEmitterComponent {
+        var e = ParticleEmitterComponent()
+        e.emitterShape = .box
+        e.emitterShapeSize = [40, 0.01, 40]
+        e.birthLocation = .volume
+        e.birthDirection = .world
+        e.emissionDirection = [0, 1, 0]
+        e.speed = 1.4
+        e.speedVariation = 0.6
+        e.fieldSimulationSpace = .global
+        e.particlesInheritTransform = false
+        var p = e.mainEmitter
+        p.birthRate = 5000
+        p.lifeSpan = 0.22
+        p.spreadingAngle = 0.7
+        p.size = 0.014
+        p.acceleration = [0, -9.8, 0]
+        p.isLightingEnabled = false
+        p.blendMode = .alpha
+        p.color = .constant(.single(UIColor(white: 0.9, alpha: 0.45)))
+        e.mainEmitter = p
+        return e
     }
 
     private static func rainEmitter() -> ParticleEmitterComponent {
@@ -350,5 +469,114 @@ final class SkyRig {
                                                            kCGImageSourceThumbnailMaxPixelSize: 4096] as CFDictionary)
         guard let image else { return nil }
         return try? await TextureResource(image: image, options: .init(semantic: .color))
+    }
+
+    static let beamMaterial: UnlitMaterial = {
+        var m = UnlitMaterial()
+        if let tex = try? TextureResource(image: beamImage(), options: .init(semantic: .color)) {
+            m.color = .init(tint: .white, texture: .init(tex))
+        }
+        m.blending = .transparent(opacity: .init(floatLiteral: 1))
+        return m
+    }()
+
+    /// Open cone along -Z from the origin (both sides), v = 0 at the apex … 1 at the far end.
+    static func coneMesh(length: Float, radius: Float, segments: Int = 32) -> MeshResource {
+        var pos: [SIMD3<Float>] = [], uv: [SIMD2<Float>] = [], idx: [UInt32] = []
+        for ring in 0...1 {
+            for s in 0...segments {
+                let a = Float(s) / Float(segments) * 2 * .pi
+                let r = ring == 0 ? 0.6 : radius
+                pos.append([cos(a) * r, sin(a) * r, ring == 0 ? 0 : -length])
+                uv.append([Float(s) / Float(segments), Float(ring)])
+            }
+        }
+        let row = UInt32(segments + 1)
+        for s in 0..<UInt32(segments) {
+            let a = s, b = s + row
+            idx += [a, b, a + 1, a + 1, b, b + 1]      // one side
+            idx += [a, a + 1, b, a + 1, b + 1, b]      // and the other
+        }
+        var d = MeshDescriptor(name: "beam")
+        d.positions = .init(pos); d.textureCoordinates = .init(uv); d.primitives = .triangles(idx)
+        return try! MeshResource.generate(from: [d])
+    }
+
+    /// Open vertical cylinder round the origin, sitting on the ground, both sides.
+    static func shellMesh(radius: Float, height: Float, segments: Int = 64) -> MeshResource {
+        var pos: [SIMD3<Float>] = [], uv: [SIMD2<Float>] = [], idx: [UInt32] = []
+        for ring in 0...1 {
+            for s in 0...segments {
+                let a = Float(s) / Float(segments) * 2 * .pi
+                pos.append([cos(a) * radius, ring == 0 ? -2 : height, sin(a) * radius])
+                uv.append([Float(s) / Float(segments), Float(ring)])
+            }
+        }
+        let row = UInt32(segments + 1)
+        for s in 0..<UInt32(segments) {
+            let a = s, b = s + row
+            idx += [a, b, a + 1, a + 1, b, b + 1]
+            idx += [a, a + 1, b, a + 1, b + 1, b]
+        }
+        var d = MeshDescriptor(name: "fogShell")
+        d.positions = .init(pos); d.textureCoordinates = .init(uv); d.primitives = .triangles(idx)
+        return try! MeshResource.generate(from: [d])
+    }
+
+    /// Vertical strip: mist colour, alpha thickest at the ground and thinning upwards.
+    static func mistImage(colour c: SIMD3<Float>, alpha: Float) -> CGImage {
+        rgbaImage(width: 4, height: 128) { _, y in
+            let up = Float(y) / 127                           // image row 0 = top (v = 1)
+            let a = alpha * (0.45 + 0.55 * pow(up, 1.2))
+            return [c.x * a, c.y * a, c.z * a, a]
+        }
+    }
+
+    /// Beam: brightest near the lamp, fading out along its length.
+    static func beamImage() -> CGImage {
+        rgbaImage(width: 4, height: 128) { _, y in
+            let along = 1 - Float(y) / 127                    // 0 at the lamp (v = 0 is the bottom row)
+            let a = 0.10 * pow(1 - along, 2.2)
+            return [1 * a, 0.96 * a, 0.88 * a, a]
+        }
+    }
+
+    /// Puddle opacity: an irregular blob with soft edges.
+    static func puddleImage(size: Int = 128) -> CGImage {
+        rgbaImage(width: size, height: size) { x, y in
+            let c = Float(size - 1) / 2
+            let dx = (Float(x) - c) / c, dy = (Float(y) - c) / c
+            let th = atan2(dy, dx), r = hypot(dx, dy)
+            let edge = 0.72 + 0.12 * sin(3 * th + 1.3) + 0.07 * sin(7 * th + 0.4) + 0.04 * sin(13 * th)
+            let a = max(0, min(1, (edge - r) / 0.12))
+            return [a, a, a, a]
+        }
+    }
+
+    static func rgbaImage(width w: Int, height h: Int, _ f: (Int, Int) -> SIMD4<Float>) -> CGImage {
+        var px = [UInt8](repeating: 0, count: w * h * 4)
+        for y in 0..<h {
+            for x in 0..<w {
+                let v = f(x, y), i = (y * w + x) * 4
+                px[i] = UInt8(max(0, min(1, v.x)) * 255); px[i + 1] = UInt8(max(0, min(1, v.y)) * 255)
+                px[i + 2] = UInt8(max(0, min(1, v.z)) * 255); px[i + 3] = UInt8(max(0, min(1, v.w)) * 255)
+            }
+        }
+        let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        return ctx.makeImage()!
+    }
+}
+
+/// Small deterministic RNG (puddle layout).
+struct SplitMix {
+    var state: UInt64
+    init(seed: UInt64) { state = seed }
+    mutating func next() -> UInt64 {
+        state &+= 0x9E3779B97F4A7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58476D1CE4E5B9
+        z = (z ^ (z >> 27)) &* 0x94D049BB133111EB
+        return z ^ (z >> 31)
     }
 }
