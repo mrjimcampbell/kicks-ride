@@ -394,7 +394,8 @@ final class SkyRig {
         for f in floods { f.isEnabled = t.lightsOn; f.light.intensity = t.lightsOn ? lumens : 0 }
         for g in glows { g.isEnabled = t.lightsOn }
         for g in mirrorGlows { g.isEnabled = t.lightsOn }
-        for b in beams { b.isEnabled = t.lightsOn && (w == .rain || w == .fog) }
+        // Beam cones off: their hard edges drew wedge lines across the sky on the TV.
+        for b in beams { b.isEnabled = false }
 
 
         // Rain: streaks on, track wet (glossier and darker).
