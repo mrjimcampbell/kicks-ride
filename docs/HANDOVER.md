@@ -28,10 +28,12 @@ play/pause pause/resume in a run / screensaver run when idle.
 1. ~~iPhone "test controller" page~~ **done 13 Nov**: Home ▸ Apple TV row (or the TV button in a
    run) → `TVControllerView`. New messages `tvStatus` (TV→phone: settings, option lists, quality
    levels, fps) and `tvSet` (phone→TV). Tested phone simulator ⇄ Unity editor; not yet on the
-   real TV. Found: the TV runs the **Mobile** quality level (PC excludes tvOS) — fix in step 2.
-2. **Quality tiers**: an on-screen frame-rate readout and a High/Ultra switch (shadow atlas size,
-   MSAA/TAA, reflection resolution, volumetric steps) to find the Living Room TV's headroom; the
-   new Apple TV (if bought) may take Ultra.
+   real TV.
+2. **Quality tiers** — built 13 Nov: Low / High / Ultra (see the Unity README), 30/60 fps cap,
+   fps + resolution on the phone page and an fps overlay on the TV. The TV had been on the
+   template's "Mobile" level and Unity's 30 fps default. **To do:** measure on the Living Room
+   TV (and the new Apple TV, ordered 13 Nov) in the heaviest moods (night rain, fog), then set
+   each TV's default tier (by device model) and tune the tier table.
 3. Test the Unity TV app with the real phone on the treadmill.
 4. Puddle *behaviour* (Jim: looks great, behaviour needs thought) — side quest below.
 5. Back to the phone app: workouts/interval strip, recording/Strava, HUD design pass (Claude Design).

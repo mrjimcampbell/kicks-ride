@@ -51,15 +51,18 @@ public struct TVSettings: Codable, Sendable, Equatable {
     public var volumetric: Double
     public var fog: Double
     public var showFPS: Bool
+    /// Frame cap: 30 or 60.
+    public var frameRate: Int
 
     public init(time: String = "Night", weather: String = "Clear", camera: String = "Orbit",
                 screensaver: Bool = false, screensaverSpeed: Double = 0, quality: String = "",
                 wetness: Double = 0, holdWetness: Bool = false, volumetric: Double = 1,
-                fog: Double = 1, showFPS: Bool = false) {
+                fog: Double = 1, showFPS: Bool = false, frameRate: Int = 60) {
         self.time = time; self.weather = weather; self.camera = camera
         self.screensaver = screensaver; self.screensaverSpeed = screensaverSpeed
         self.quality = quality; self.wetness = wetness; self.holdWetness = holdWetness
         self.volumetric = volumetric; self.fog = fog; self.showFPS = showFPS
+        self.frameRate = frameRate
     }
 }
 
@@ -75,10 +78,13 @@ public struct TVStatus: Codable, Sendable, Equatable {
     public var fps: Double
     /// A phone run is showing (screensaver doesn't apply).
     public var running: Bool
+    /// Output size and the 3D render size, e.g. "3840×2160 · 3D 3072×1728".
+    public var resolution: String
 
     public init(tvName: String, settings: TVSettings, times: [String], weathers: [String],
-                cameras: [String], qualityLevels: [String], fps: Double, running: Bool) {
+                cameras: [String], qualityLevels: [String], fps: Double, running: Bool, resolution: String = "") {
         self.tvName = tvName; self.settings = settings; self.times = times; self.weathers = weathers
         self.cameras = cameras; self.qualityLevels = qualityLevels; self.fps = fps; self.running = running
+        self.resolution = resolution
     }
 }

@@ -38,13 +38,23 @@ struct TVControllerView: View {
         Form {
             Section {
                 LabeledContent("Frame rate", value: String(format: "%.0f fps", status.fps))
+                Picker("Frame cap", selection: bind(\.frameRate)) {
+                    Text("30").tag(30)
+                    Text("60").tag(60)
+                }
+                .pickerStyle(.segmented)
                 Toggle("Show frame rate on TV", isOn: bind(\.showFPS))
                 if !status.qualityLevels.isEmpty {
                     Picker("Quality", selection: bind(\.quality)) {
                         ForEach(status.qualityLevels, id: \.self) { Text($0).tag($0) }
                     }
                 }
-            } header: { Text(status.tvName) }
+                if !status.resolution.isEmpty {
+                    LabeledContent("Resolution", value: status.resolution)
+                }
+            } header: { Text(status.tvName) } footer: {
+                Text("Low / High / Ultra: render scale, shadows (floodlight shadows from High), puddle mirror size, volumetric steps.")
+            }
 
             Section("Scene") {
                 options("Time of day", status.times, \.time)

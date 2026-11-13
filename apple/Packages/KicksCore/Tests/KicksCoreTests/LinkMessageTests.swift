@@ -18,7 +18,7 @@ import Testing
 
     /// What the Unity app's JsonUtility.ToJson writes (doubles as 1.0, arrays inline).
     @Test func decodesUnityStatus() throws {
-        let unity = #"{"tvStatus":{"_0":{"tvName":"Living Room","settings":{"time":"Night","weather":"Clear","camera":"Orbit","quality":"PC","screensaver":false,"holdWetness":false,"showFPS":false,"screensaverSpeed":0.0,"wetness":0.25,"volumetric":1.0,"fog":1.0},"times":["Midday","Night"],"weathers":["Clear","Rain"],"cameras":["Orbit","Standard"],"qualityLevels":["Mobile","PC"],"fps":59.8,"running":false}}}"#
+        let unity = #"{"tvStatus":{"_0":{"tvName":"Living Room","settings":{"time":"Night","weather":"Clear","camera":"Orbit","quality":"PC","screensaver":false,"holdWetness":false,"showFPS":false,"frameRate":60,"screensaverSpeed":0.0,"wetness":0.25,"volumetric":1.0,"fog":1.0},"times":["Midday","Night"],"weathers":["Clear","Rain"],"cameras":["Orbit","Standard"],"qualityLevels":["Mobile","PC"],"fps":59.8,"running":false,"resolution":"3840×2160 · 3D 3072×1728"}}}"#
         guard case .tvStatus(let st) = try LinkMessage.decode(Data(unity.utf8)) else {
             Issue.record("not a tvStatus"); return
         }
