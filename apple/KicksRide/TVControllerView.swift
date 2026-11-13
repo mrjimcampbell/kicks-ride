@@ -56,6 +56,26 @@ struct TVControllerView: View {
                 Text("Low / High / Ultra: render scale, shadows (floodlight shadows from High), puddle mirror size, volumetric steps.")
             }
 
+            Section {
+                options("Ambient occlusion", status.ambientOcclusionModes, \.ambientOcclusion)
+                options("Anti-aliasing", status.antiAliasingModes, \.antiAliasing)
+            } header: { Text("Realism") } footer: {
+                Text("Ambient occlusion darkens where things meet (feet, kerbs, under the stands). TAA is best on shimmer (fences, shadows) but can smear; MSAA cleans geometry edges only and costs most at 4K.")
+            }
+
+            Section("Lens") {
+                Toggle("Lens dirt (shows in bloom)", isOn: bind(\.lensDirt))
+                Toggle("Vignette", isOn: bind(\.vignette))
+                Toggle("Film grain", isOn: bind(\.filmGrain))
+                Toggle("Chromatic aberration", isOn: bind(\.chromaticAberration))
+            }
+
+            Section {
+                Toggle("Show TV matching card", isOn: bind(\.calibration))
+            } footer: {
+                Text("Set both TVs to the same picture mode (Filmmaker/Movie), then adjust brightness until 2 % is just visible on black and contrast until 98–99 % still separate from white.")
+            }
+
             Section("Scene") {
                 options("Time of day", status.times, \.time)
                 options("Weather", status.weathers, \.weather)

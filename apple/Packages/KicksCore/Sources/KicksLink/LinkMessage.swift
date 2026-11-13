@@ -53,16 +53,32 @@ public struct TVSettings: Codable, Sendable, Equatable {
     public var showFPS: Bool
     /// Frame cap: 30 or 60.
     public var frameRate: Int
+    /// Realism switches: one of `TVStatus.ambientOcclusionModes` / `antiAliasingModes`.
+    public var ambientOcclusion: String
+    public var antiAliasing: String
+    /// Lens effects.
+    public var lensDirt: Bool
+    public var vignette: Bool
+    public var filmGrain: Bool
+    public var chromaticAberration: Bool
+    /// Full-screen card for matching TVs' brightness/contrast.
+    public var calibration: Bool
 
     public init(time: String = "Night", weather: String = "Clear", camera: String = "Orbit",
                 screensaver: Bool = false, screensaverSpeed: Double = 0, quality: String = "",
                 wetness: Double = 0, holdWetness: Bool = false, volumetric: Double = 1,
-                fog: Double = 1, showFPS: Bool = false, frameRate: Int = 60) {
+                fog: Double = 1, showFPS: Bool = false, frameRate: Int = 60,
+                ambientOcclusion: String = "", antiAliasing: String = "", lensDirt: Bool = false,
+                vignette: Bool = true, filmGrain: Bool = false, chromaticAberration: Bool = false,
+                calibration: Bool = false) {
         self.time = time; self.weather = weather; self.camera = camera
         self.screensaver = screensaver; self.screensaverSpeed = screensaverSpeed
         self.quality = quality; self.wetness = wetness; self.holdWetness = holdWetness
         self.volumetric = volumetric; self.fog = fog; self.showFPS = showFPS
         self.frameRate = frameRate
+        self.ambientOcclusion = ambientOcclusion; self.antiAliasing = antiAliasing
+        self.lensDirt = lensDirt; self.vignette = vignette; self.filmGrain = filmGrain
+        self.chromaticAberration = chromaticAberration; self.calibration = calibration
     }
 }
 
@@ -74,6 +90,8 @@ public struct TVStatus: Codable, Sendable, Equatable {
     public var weathers: [String]
     public var cameras: [String]
     public var qualityLevels: [String]
+    public var ambientOcclusionModes: [String]
+    public var antiAliasingModes: [String]
     /// Frames per second, averaged over the last second.
     public var fps: Double
     /// A phone run is showing (screensaver doesn't apply).
@@ -82,9 +100,11 @@ public struct TVStatus: Codable, Sendable, Equatable {
     public var resolution: String
 
     public init(tvName: String, settings: TVSettings, times: [String], weathers: [String],
-                cameras: [String], qualityLevels: [String], fps: Double, running: Bool, resolution: String = "") {
+                cameras: [String], qualityLevels: [String], ambientOcclusionModes: [String] = [], antiAliasingModes: [String] = [],
+                fps: Double, running: Bool, resolution: String = "") {
         self.tvName = tvName; self.settings = settings; self.times = times; self.weathers = weathers
         self.cameras = cameras; self.qualityLevels = qualityLevels; self.fps = fps; self.running = running
         self.resolution = resolution
+        self.ambientOcclusionModes = ambientOcclusionModes; self.antiAliasingModes = antiAliasingModes
     }
 }

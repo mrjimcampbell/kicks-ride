@@ -34,11 +34,23 @@ play/pause pause/resume in a run / screensaver run when idle.
    template's "Mobile" level and Unity's 30 fps default. **To do:** measure on the Living Room
    TV (and the new Apple TV, ordered 13 Nov) in the heaviest moods (night rain, fog), then set
    each TV's default tier (by device model) and tune the tier table.
+2b. **Realism/lens switches + TV matching card** — built 13 Nov (phone page: SSAO, AA, lens
+   dirt, vignette, grain, chromatic aberration; card for matching the Living Room TV to the
+   Frame). Floodlight shadow atlas fixed (tiles were ~512 px: the "dancing" shadows). Reference
+   stills/clips for Jim's LUT work: `kicks-ride-unity/Tools/reference_frames.sh` → `Reference/`.
+   Next: Jim grades in AE/Resolve → 33-point .cube → convert to a URP Color Lookup strip per
+   mood (LUT applies after ACES in LDR grading mode, on sRGB values = the reference frames).
+   Noted: night clear is genuinely bright (twilight-blue sky), and the night-rain puddle reads as
+   a dark slab.
 3. Test the Unity TV app with the real phone on the treadmill.
 4. Puddle *behaviour* (Jim: looks great, behaviour needs thought) — side quest below.
 5. Back to the phone app: workouts/interval strip, recording/Strava, HUD design pass (Claude Design).
 
 ## Side quests (separate sessions, small handovers)
+- **Cinematic lighting**: runner-only rim/fill lights (URP light layers) matched to the floodlight
+  directions, a tight shadow-only light following the runner, per-mood LUT grades, lens flares;
+  probe-volume baked GI with day/night scenarios and reflection probes as the big realism step.
+  Jim will bring stills/video references.
 - **Rain & wet surfaces** (good Fable 5.2 test later): in a *separate small Unity project*
   (arena + track + sky only) so it doesn't lock the main project; judge against reference videos
   Jim can supply; Apple TV/URP only (HDRP doesn't run on tvOS); bring results back as scripts/shaders.
