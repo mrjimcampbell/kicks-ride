@@ -70,6 +70,7 @@ struct RunView: View {
     @AppStorage(Prefs.hudSize) private var hudSize = HUDSize.large.rawValue
     @State private var session = RunSession()
     @State private var confirmEnd = false
+    @State private var showTV = false
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     private var scale: CGFloat { (HUDSize(rawValue: hudSize) ?? .large).scale }
@@ -81,6 +82,10 @@ struct RunView: View {
                 Text(s.isPaused ? (session.userPaused ? "PAUSED" : "WAITING FOR BELT") : "RUNNING")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(s.isPaused ? .orange : .green)
+                if link.tvStatus != nil {
+                    Button("TV", systemImage: "appletv") { showTV = true }
+                        .labelStyle(.iconOnly).buttonStyle(.bordered)
+                }
                 Spacer()
                 Text(Format.duration(s.elapsed)).font(.system(size: 28 * scale, weight: .bold, design: .rounded))
             }
@@ -132,6 +137,9 @@ struct RunView: View {
             UIApplication.shared.isIdleTimerDisabled = false
             link.onCommand = nil
             link.send(.idle)
+        }
+        .sheet(isPresented: $showTV) {
+            NavigationStack { TVControllerView() }.presentationDetents([.medium, .large])
         }
         .confirmationDialog("End this run?", isPresented: $confirmEnd, titleVisibility: .visible) {
             Button("End run", role: .destructive) {

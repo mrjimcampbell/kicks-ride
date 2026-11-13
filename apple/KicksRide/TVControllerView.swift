@@ -1,0 +1,115 @@
+import SwiftUI
+import KicksLink
+
+/// TV test controller: switch the TV's look-dev variables from the phone instead of the remote.
+/// The page mirrors whatever the TV reports (`tvStatus`), so remote presses on the TV show up
+/// here too; each edit sends the whole settings set back (`tvSet`). Works in a run or idle.
+struct TVControllerView: View {
+    @Environment(LinkHost.self) private var link
+    @State private var draft = TVSettings()
+    /// While you're dragging a slider the TV's echo would make it jump: ignore status for a moment.
+    @State private var editedAt = Date.distantPast
+    @State private var wetnessEdited = false
+
+    var body: some View {
+        Group {
+            if let status = link.tvStatus {
+                form(status)
+            } else {
+                ContentUnavailableView {
+                    Label(link.displayCount == 0 ? "No Apple TV connected" : "This TV has no test controls",
+                          systemImage: "appletv")
+                } description: {
+                    Text(link.displayCount == 0
+                         ? "Open Virtual Trainer on the Apple TV, on the same Wi-Fi."
+                         : "Only the Unity TV app reports its settings.")
+                }
+            }
+        }
+        .navigationTitle("TV controls")
+        .onAppear { if let s = link.tvStatus { draft = s.settings } }
+        .onChange(of: link.tvStatus) { _, s in
+            guard let s, Date().timeIntervalSince(editedAt) > 1.5 else { return }
+            draft = s.settings
+        }
+    }
+
+    private func form(_ status: TVStatus) -> some View {
+        Form {
+            Section {
+                LabeledContent("Frame rate", value: String(format: "%.0f fps", status.fps))
+                Toggle("Show frame rate on TV", isOn: bind(\.showFPS))
+                if !status.qualityLevels.isEmpty {
+                    Picker("Quality", selection: bind(\.quality)) {
+                        ForEach(status.qualityLevels, id: \.self) { Text($0).tag($0) }
+                    }
+                }
+            } header: { Text(status.tvName) }
+
+            Section("Scene") {
+                options("Time of day", status.times, \.time)
+                options("Weather", status.weathers, \.weather)
+                options("Camera", status.cameras, \.camera)
+            }
+
+            Section {
+                slider("Wetness", \.wetness, 0...1, format: { String(format: "%.0f %%", $0 * 100) })
+                Toggle("Hold wetness", isOn: bind(\.holdWetness))
+                slider("Volumetric light", \.volumetric, 0...3, format: { String(format: "× %.2f", $0) })
+                slider("Fog", \.fog, 0...3, format: { String(format: "× %.2f", $0) })
+                Button("Reset multipliers") {
+                    draft.volumetric = 1; draft.fog = 1; push()
+                }
+            } header: { Text("Atmosphere") } footer: {
+                Text("Puddles grow while it rains and dry out afterwards unless held. Multipliers scale the mood's own values (× 1 = as designed).")
+            }
+
+            Section {
+                Toggle("Screensaver run", isOn: bind(\.screensaver))
+                    .disabled(status.running)
+                slider("Speed", \.screensaverSpeed, 0...22, step: 0.5,
+                       format: { $0 == 0 ? "Programme" : String(format: "%.1f km/h", $0) })
+                    .disabled(status.running)
+            } header: { Text("Runner") } footer: {
+                Text(status.running ? "A run is showing: the runner follows the treadmill."
+                     : "Speed 0 = the demo programme of changing speeds.")
+            }
+        }
+        .monospacedDigit()
+    }
+
+    // MARK: - Controls
+
+    private func options(_ title: String, _ values: [String], _ key: WritableKeyPath<TVSettings, String>) -> some View {
+        Picker(title, selection: bind(key)) {
+            ForEach(values, id: \.self) { Text($0).tag($0) }
+        }
+    }
+
+    private func slider(_ title: String, _ key: WritableKeyPath<TVSettings, Double>, _ range: ClosedRange<Double>,
+                        step: Double = 0.05, format: @escaping (Double) -> String) -> some View {
+        VStack(alignment: .leading) {
+            LabeledContent(title, value: format(draft[keyPath: key]))
+            Slider(value: bind(key), in: range, step: step)
+        }
+    }
+
+    private func bind<T: Equatable>(_ key: WritableKeyPath<TVSettings, T>) -> Binding<T> {
+        Binding(
+            get: { draft[keyPath: key] },
+            set: { v in
+                guard draft[keyPath: key] != v else { return }
+                draft[keyPath: key] = v
+                if (key as AnyKeyPath) == (\TVSettings.wetness as AnyKeyPath) { wetnessEdited = true }
+                push()
+            })
+    }
+
+    private func push() {
+        editedAt = Date()
+        var out = draft
+        if !wetnessEdited { out.wetness = -1 }     // wetness drifts on the TV: only send it when moved
+        wetnessEdited = false
+        link.sendToTVs(.tvSet(out))
+    }
+}

@@ -47,6 +47,9 @@ public final class LinkHost {
     public private(set) var displayCount = 0
     /// Remote presses from a TV (pause/resume, speed up/down…).
     @ObservationIgnored public var onCommand: ((LinkMessage.Command) -> Void)?
+    /// Latest look/test status reported by a TV (nil until one reports; the Unity TV app does,
+    /// the RealityKit one doesn't). With several TVs, whichever spoke last.
+    public private(set) var tvStatus: TVStatus?
 
     @ObservationIgnored private var listener: NWListener?
     @ObservationIgnored private var connections: [NWConnection] = []
@@ -82,6 +85,13 @@ public final class LinkHost {
         for c in connections { LinkParameters.send(data, on: c) }
     }
 
+    /// Send to every connected TV without making it the message replayed to TVs that join later
+    /// (for one-off commands such as `.tvSet`; the replay stays the run state / idle).
+    public func sendToTVs(_ message: LinkMessage) {
+        guard let data = try? message.encoded() else { return }
+        for c in connections { LinkParameters.send(data, on: c) }
+    }
+
     private func restart() {
         listener?.cancel()
         listener = nil
@@ -102,6 +112,7 @@ public final class LinkHost {
                     c.cancel()
                     self.connections.removeAll { $0 === c }
                     self.displayCount = self.connections.count
+                    if self.connections.isEmpty { self.tvStatus = nil }
                 default: break
                 }
             }
@@ -110,7 +121,11 @@ public final class LinkHost {
         displayCount = connections.count
         c.start(queue: .main)
         LinkParameters.receive(on: c) { [weak self] m in
-            if case .command(let cmd) = m { self?.onCommand?(cmd) }
+            switch m {
+            case .command(let cmd): self?.onCommand?(cmd)
+            case .tvStatus(let status): self?.tvStatus = status
+            default: break
+            }
         }
     }
 }

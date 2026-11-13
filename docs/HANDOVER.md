@@ -25,9 +25,10 @@ Clicks only (touch is off: too sensitive). Ring ←/→ camera (orbit is one of 
 play/pause pause/resume in a run / screensaver run when idle.
 
 ## Next steps (Jim's list)
-1. **iPhone "test controller" page**: switch TV variables from the phone instead of cramming them
-   onto the remote — time of day, weather, camera, screensaver run on/off and speed, quality tier,
-   wetness, volumetric strength… Needs new LinkMessage commands (phone→TV) in both apps.
+1. ~~iPhone "test controller" page~~ **done 13 Nov**: Home ▸ Apple TV row (or the TV button in a
+   run) → `TVControllerView`. New messages `tvStatus` (TV→phone: settings, option lists, quality
+   levels, fps) and `tvSet` (phone→TV). Tested phone simulator ⇄ Unity editor; not yet on the
+   real TV. Found: the TV runs the **Mobile** quality level (PC excludes tvOS) — fix in step 2.
 2. **Quality tiers**: an on-screen frame-rate readout and a High/Ultra switch (shadow atlas size,
    MSAA/TAA, reflection resolution, volumetric steps) to find the Living Room TV's headroom; the
    new Apple TV (if bought) may take Ultra.

@@ -33,7 +33,7 @@ struct KicksRideTVApp: App {
             running = false
             state = SessionState()
             runnerDistance = 0
-        case .command: break
+        case .command, .tvStatus, .tvSet: break   // test controller: Unity TV app only
         }
     }
 

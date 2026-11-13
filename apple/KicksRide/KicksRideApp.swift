@@ -67,7 +67,7 @@ struct Route: Identifiable, Hashable {
 
 // MARK: - Home
 
-enum Screen: String, Hashable { case devices, route, preferences }
+enum Screen: String, Hashable { case devices, route, preferences, tv }
 
 struct HomeView: View {
     @Environment(BluetoothHub.self) private var hub
@@ -95,8 +95,10 @@ struct HomeView: View {
                     NavigationLink(value: Screen.preferences) {
                         Text("Preferences")
                     }
-                    LabeledContent("Apple TV", value: link.displayCount == 0 ? "Not connected"
-                                   : link.displayCount == 1 ? "Connected" : "\(link.displayCount) connected")
+                    NavigationLink(value: Screen.tv) {
+                        LabeledContent("Apple TV", value: link.displayCount == 0 ? "Not connected"
+                                       : link.displayCount == 1 ? "Connected" : "\(link.displayCount) connected")
+                    }
                 }
 
                 Section {
@@ -123,6 +125,7 @@ struct HomeView: View {
                 case .devices: DevicesView()
                 case .route: RouteView()
                 case .preferences: PreferencesView()
+                case .tv: TVControllerView()
                 }
             }
             .fullScreenCover(isPresented: $running) { RunView() }
@@ -130,7 +133,7 @@ struct HomeView: View {
         }
     }
 
-    /// Debug/screenshot hook: launch with `-kr-screen devices|route|preferences|run`.
+    /// Debug/screenshot hook: launch with `-kr-screen devices|route|preferences|tv|run`.
     private func openFromLaunchArguments() {
         let args = ProcessInfo.processInfo.arguments
         guard let i = args.firstIndex(of: "-kr-screen"), i + 1 < args.count else { return }
