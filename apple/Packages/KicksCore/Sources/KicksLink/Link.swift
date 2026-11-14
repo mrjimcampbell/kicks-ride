@@ -54,10 +54,12 @@ public final class LinkHost {
     @ObservationIgnored private var listener: NWListener?
     @ObservationIgnored private var connections: [NWConnection] = []
     @ObservationIgnored private var last: Data?
+    @ObservationIgnored private var heartbeat: Task<Void, Never>?
 
     public init() {}
 
     public func start() {
+        startHeartbeat()
         guard listener == nil else { return }
         do {
             let l = try NWListener(using: LinkParameters.make())
@@ -90,6 +92,35 @@ public final class LinkHost {
     public func sendToTVs(_ message: LinkMessage) {
         guard let data = try? message.encoded() else { return }
         for c in connections { LinkParameters.send(data, on: c) }
+    }
+
+    /// Drop every TV and advertise afresh (the phone page's Reconnect button): TVs see the service
+    /// go and come back, re-resolve it and connect again.
+    public func reconnect() {
+        for c in connections { c.cancel() }
+        connections.removeAll()
+        displayCount = 0
+        tvStatus = nil
+        listener?.cancel()
+        listener = nil
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(600))
+            self?.start()
+        }
+    }
+
+    /// Resend the latest message every 2 s. The TV treats ~6 s of silence as a dead link — an app
+    /// suspended in the background drops its sockets without closing them, and an idle phone
+    /// otherwise says nothing after its one "idle".
+    private func startHeartbeat() {
+        guard heartbeat == nil else { return }
+        heartbeat = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard let self, let last = self.last else { continue }
+                for c in self.connections { LinkParameters.send(last, on: c) }
+            }
+        }
     }
 
     private func restart() {

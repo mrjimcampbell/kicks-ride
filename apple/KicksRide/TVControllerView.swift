@@ -16,13 +16,18 @@ struct TVControllerView: View {
             if let status = link.tvStatus {
                 form(status)
             } else {
-                ContentUnavailableView {
-                    Label(link.displayCount == 0 ? "No Apple TV connected" : "This TV has no test controls",
-                          systemImage: "appletv")
-                } description: {
-                    Text(link.displayCount == 0
-                         ? "Open Virtual Trainer on the Apple TV, on the same Wi-Fi."
-                         : "Only the Unity TV app reports its settings.")
+                Form {
+                    Section {
+                        HStack(spacing: 12) {
+                            ProgressView()
+                            Text(link.displayCount == 0 ? "Looking for Apple TV…" : "Connected, waiting for the TV…")
+                        }
+                        reconnectButton
+                    } footer: {
+                        Text(link.displayCount == 0
+                             ? "Open Virtual Trainer (Unity) on the Apple TV, on the same Wi-Fi. If it doesn't appear within ~15 s, tap Reconnect."
+                             : "Only the Unity TV app reports its settings; the RealityKit one has no test controls.")
+                    }
                 }
             }
         }
@@ -39,10 +44,10 @@ struct TVControllerView: View {
             Section {
                 LabeledContent("Frame rate", value: String(format: "%.0f fps", status.fps))
                 Picker("Frame cap", selection: bind(\.frameRate)) {
-                    Text("30").tag(30)
-                    Text("60").tag(60)
+                    ForEach(status.frameRates.sorted(), id: \.self) { Text("\($0) fps").tag($0) }
                 }
                 .pickerStyle(.segmented)
+                LabeledContent("TV output", value: String(format: "%.0f Hz", status.refreshRate))
                 Toggle("Show frame rate on TV", isOn: bind(\.showFPS))
                 if !status.qualityLevels.isEmpty {
                     Picker("Quality", selection: bind(\.quality)) {
@@ -52,6 +57,7 @@ struct TVControllerView: View {
                 if !status.resolution.isEmpty {
                     LabeledContent("Resolution", value: status.resolution)
                 }
+                reconnectButton
             } header: { Text(status.tvName) } footer: {
                 Text("Low / High / Ultra: render scale, shadows (floodlight shadows from High), puddle mirror size, volumetric steps.")
             }
@@ -109,6 +115,15 @@ struct TVControllerView: View {
     }
 
     // MARK: - Controls
+
+    /// Drops the TV link and advertises the phone afresh; the TV re-finds it within a few seconds.
+    private var reconnectButton: some View {
+        Button {
+            link.reconnect()
+        } label: {
+            Label("Reconnect", systemImage: "arrow.triangle.2.circlepath")
+        }
+    }
 
     private func options(_ title: String, _ values: [String], _ key: WritableKeyPath<TVSettings, String>) -> some View {
         Picker(title, selection: bind(key)) {

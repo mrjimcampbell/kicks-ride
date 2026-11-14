@@ -51,7 +51,7 @@ public struct TVSettings: Codable, Sendable, Equatable {
     public var volumetric: Double
     public var fog: Double
     public var showFPS: Bool
-    /// Frame cap: 30 or 60.
+    /// Frame cap: one of `TVStatus.frameRates` (the display's refresh rate or half).
     public var frameRate: Int
     /// Realism switches: one of `TVStatus.ambientOcclusionModes` / `antiAliasingModes`.
     public var ambientOcclusion: String
@@ -98,13 +98,18 @@ public struct TVStatus: Codable, Sendable, Equatable {
     public var running: Bool
     /// Output size and the 3D render size, e.g. "3840×2160 · 3D 3072×1728".
     public var resolution: String
+    /// Frame caps the display allows: its refresh rate and half (50/25 at 50 Hz, 60/30 at 60 Hz).
+    public var frameRates: [Int]
+    public var refreshRate: Double
 
     public init(tvName: String, settings: TVSettings, times: [String], weathers: [String],
                 cameras: [String], qualityLevels: [String], ambientOcclusionModes: [String] = [], antiAliasingModes: [String] = [],
-                fps: Double, running: Bool, resolution: String = "") {
+                fps: Double, running: Bool, resolution: String = "", frameRates: [Int] = [60, 30],
+                refreshRate: Double = 60) {
         self.tvName = tvName; self.settings = settings; self.times = times; self.weathers = weathers
         self.cameras = cameras; self.qualityLevels = qualityLevels; self.fps = fps; self.running = running
         self.resolution = resolution
+        self.frameRates = frameRates; self.refreshRate = refreshRate
         self.ambientOcclusionModes = ambientOcclusionModes; self.antiAliasingModes = antiAliasingModes
     }
 }

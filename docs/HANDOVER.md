@@ -42,6 +42,14 @@ play/pause pause/resume in a run / screensaver run when idle.
    mood (LUT applies after ACES in LDR grading mode, on sRGB values = the reference frames).
    Noted: night clear is genuinely bright (twilight-blue sky), and the night-rain puddle reads as
    a dark slab.
+2c. **14 Nov**: new Apple TV 4K (4th gen) = "Entertainment Room" (the gym box), installed.
+   Link reliability: phone heartbeat every 2 s, TV drops a silent link after 6 s and restarts
+   Bonjour; phone page has Reconnect + "Looking for Apple TV…" spinner and re-advertises on
+   returning from background. Frame caps follow the display (50/25 on UK 50 Hz output). Remote
+   ring clicks fixed (thumb position remembered — broke at 60 fps); untested on a real remote.
+   Jim's setup notes: new box defaulted to 60 Hz Dolby Vision; DV makes our SDR app darker and
+   oversaturated — suggested 4K SDR 60 Hz + Match Dynamic Range + Match Frame Rate, then match
+   TVs with the card. Jim is moving to voice notes (Granola / Wispr Flow) for feedback batches.
 3. Test the Unity TV app with the real phone on the treadmill.
 4. Puddle *behaviour* (Jim: looks great, behaviour needs thought) — side quest below.
 5. Back to the phone app: workouts/interval strip, recording/Strava, HUD design pass (Claude Design).

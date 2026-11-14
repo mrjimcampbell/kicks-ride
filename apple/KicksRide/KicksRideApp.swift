@@ -9,6 +9,8 @@ import KicksLink
 struct KicksRideApp: App {
     @State private var hub = BluetoothHub()
     @State private var link = LinkHost()
+    @Environment(\.scenePhase) private var phase
+    @State private var wasInBackground = false
 
     var body: some Scene {
         WindowGroup {
@@ -18,6 +20,15 @@ struct KicksRideApp: App {
                 .task {
                     link.start()
                     link.send(.idle)
+                }
+                // Back from the background with no TV: iOS will have dropped the listener's
+                // connections, so advertise afresh rather than waiting for the TV to notice.
+                .onChange(of: phase) { _, p in
+                    if p == .background { wasInBackground = true }
+                    if p == .active, wasInBackground {
+                        wasInBackground = false
+                        if link.displayCount == 0 { link.reconnect() }
+                    }
                 }
         }
     }
