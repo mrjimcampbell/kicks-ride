@@ -46,7 +46,8 @@ play/pause pause/resume in a run / screensaver run when idle.
    Link reliability: phone heartbeat every 2 s, TV drops a silent link after 6 s and restarts
    Bonjour; phone page has Reconnect + "Looking for Apple TV…" spinner and re-advertises on
    returning from background. Frame caps follow the display (50/25 on UK 50 Hz output). Remote
-   ring clicks fixed (thumb position remembered — broke at 60 fps); untested on a real remote.
+   ring clicks fixed and confirmed by Jim (they're joystick buttons 4–7, found with a console
+   probe; touch axes read 0). Both TVs updated. Reference library: `kicks-ride-unity/Refs/`.
    Jim's setup notes: new box defaulted to 60 Hz Dolby Vision; DV makes our SDR app darker and
    oversaturated — suggested 4K SDR 60 Hz + Match Dynamic Range + Match Frame Rate, then match
    TVs with the card. Jim is moving to voice notes (Granola / Wispr Flow) for feedback batches.
