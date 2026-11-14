@@ -51,6 +51,22 @@ play/pause pause/resume in a run / screensaver run when idle.
    Jim's setup notes: new box defaulted to 60 Hz Dolby Vision; DV makes our SDR app darker and
    oversaturated — suggested 4K SDR 60 Hz + Match Dynamic Range + Match Frame Rate, then match
    TVs with the card. Jim is moving to voice notes (Granola / Wispr Flow) for feedback batches.
+2d. **14 Nov (later)**: found builds had an *empty post profile* since day one (no bloom, ACES or
+   volumetric light on the TVs; only the runtime vignette) — fixed, plus grain/CA/lens dirt now
+   work in builds. Gait jitter fixed: Mixamo "Jogging" looped 3 strides vs 1 for the others and
+   the blend tree syncs by % — clips are now measured and stride-aligned on import (no need to
+   re-export slowed clips or bake in-betweens: Unity evaluates keyframe curves at render rate).
+   SSAO softer (same radius, ~⅓ opacity), vignette stronger, phone distance corrections eased
+   (possible camera "nudges"). Ring clicks now press-only (UIKit arrow presses). Render scale
+   override (to 2× supersampling); both boxes run Ultra at 1080p — gym = new box at 1080p.
+   **Track surface rebuild (Jim's call)**: replace the arena's track texture (no visible texture
+   or light response today) with a CC0 PBR set (ambientCG/Poly Haven rubber or asphalt: normal,
+   roughness, height, AO) tinted; lane lines as texture/shader from the exact track geometry,
+   paint applied by a height mask (on granule tops, not the gaps — refs in Refs/01); wet =
+   roughness/darkening, so speculars need the roughness map. Lane-line and grass geometry sitting
+   on the track causes AO artefacts → part of making the arena game-ready.
+   Ideas parked: rain on the lens (maybe Low camera only), Video Copilot lens-grime textures
+   (Jim adding to Refs), auto tier from box + output resolution, a "what's costing frames" line.
 3. Test the Unity TV app with the real phone on the treadmill.
 4. Puddle *behaviour* (Jim: looks great, behaviour needs thought) — side quest below.
 5. Back to the phone app: workouts/interval strip, recording/Strava, HUD design pass (Claude Design).
