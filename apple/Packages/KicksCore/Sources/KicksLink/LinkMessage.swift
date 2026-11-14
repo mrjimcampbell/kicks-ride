@@ -63,6 +63,8 @@ public struct TVSettings: Codable, Sendable, Equatable {
     public var chromaticAberration: Bool
     /// Full-screen card for matching TVs' brightness/contrast.
     public var calibration: Bool
+    /// 3D render scale override, 0 = the quality tier's own; above 1 = supersampling.
+    public var renderScale: Double
 
     public init(time: String = "Night", weather: String = "Clear", camera: String = "Orbit",
                 screensaver: Bool = false, screensaverSpeed: Double = 0, quality: String = "",
@@ -70,7 +72,7 @@ public struct TVSettings: Codable, Sendable, Equatable {
                 fog: Double = 1, showFPS: Bool = false, frameRate: Int = 60,
                 ambientOcclusion: String = "", antiAliasing: String = "", lensDirt: Bool = false,
                 vignette: Bool = true, filmGrain: Bool = false, chromaticAberration: Bool = false,
-                calibration: Bool = false) {
+                calibration: Bool = false, renderScale: Double = 0) {
         self.time = time; self.weather = weather; self.camera = camera
         self.screensaver = screensaver; self.screensaverSpeed = screensaverSpeed
         self.quality = quality; self.wetness = wetness; self.holdWetness = holdWetness
@@ -79,6 +81,7 @@ public struct TVSettings: Codable, Sendable, Equatable {
         self.ambientOcclusion = ambientOcclusion; self.antiAliasing = antiAliasing
         self.lensDirt = lensDirt; self.vignette = vignette; self.filmGrain = filmGrain
         self.chromaticAberration = chromaticAberration; self.calibration = calibration
+        self.renderScale = renderScale
     }
 }
 

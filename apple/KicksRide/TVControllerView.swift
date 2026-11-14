@@ -54,6 +54,12 @@ struct TVControllerView: View {
                         ForEach(status.qualityLevels, id: \.self) { Text($0).tag($0) }
                     }
                 }
+                Picker("Render scale", selection: bind(\.renderScale)) {
+                    Text("Tier default").tag(0.0)
+                    ForEach([0.5, 0.67, 0.8, 1.0, 1.25, 1.5, 2.0], id: \.self) { v in
+                        Text(v > 1 ? String(format: "%.2g× (supersample)", v) : String(format: "%.2g×", v)).tag(v)
+                    }
+                }
                 if !status.resolution.isEmpty {
                     LabeledContent("Resolution", value: status.resolution)
                 }
