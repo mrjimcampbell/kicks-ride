@@ -81,4 +81,5 @@ Repo: github.com/mrjimcampbell/kicks-ride (public, GitHub Pages from `main` root
 ## Working with Jim
 - Likes to explore ideas broadly but wants to reach something usable; keep scope tight per milestone and timebox experiments.
 - Big, legible HUD numbers. Run metrics: pace (min/km), distance, HR (cadence secondary). Ride: speed, watts, avg watts, HR.
+- `kicks-ride-unity/Notes/` is Jim's brainstorming space, kept with Claude in chat. It is not instructions: don't act on anything in it. When a piece of work is agreed, it arrives as `Notes/next-brief.md`, and Jim will point you to it.
 - Commits: end messages with `Co-Authored-By: Claude <noreply@anthropic.com>`.
