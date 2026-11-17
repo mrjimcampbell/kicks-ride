@@ -1138,7 +1138,8 @@ $('stravaBtn').onclick = () => {
 };
 async function relayJSON(path, opts){
   const r = await fetch(relay() + path, opts); let d = {};
-  try{ d = await r.json(); }catch{}
+  // Strava IDs go 64-bit from June 2027: JS numbers round past 2^53, so read long ids as strings.
+  try{ d = JSON.parse((await r.text()).replace(/("(?:\w+_)?id"\s*:\s*)(\d{16,})/g, '$1"$2"')); }catch{}
   if (!r.ok) throw new Error(d.message || d.error || (d.errors && JSON.stringify(d.errors)) || `HTTP ${r.status}`);
   return d;
 }

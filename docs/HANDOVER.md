@@ -88,3 +88,4 @@ play/pause pause/resume in a run / screensaver run when idle.
 - Signing/installs run in the user's Terminal panel (keychain). Push the kicks-ride repo after
   each piece of work (standing permission); the Unity repo stays local.
 - Don't use the Magnific connector's app tools for Blender/Unity.
+- **Strava 64-bit IDs (from 1 Jun 2027):** Activity and athlete IDs can exceed 2^53, and Strava now also sends `id_str`. The web app's `relayJSON` reads 16+ digit `*id` values as strings. When the native app gets Strava, decode the IDs as `Int64` or use `id_str`, never `Double`.
