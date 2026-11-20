@@ -65,6 +65,9 @@ public struct TVSettings: Codable, Sendable, Equatable {
     public var calibration: Bool
     /// 3D render scale override, 0 = the quality tier's own; above 1 = supersampling.
     public var renderScale: Double
+    /// Dev dashboard values (key → value as a string), for the controls the TV lists in
+    /// `TVStatus.devControls`. Optional so older TV builds without it still decode.
+    public var dev: [DevValue]?
 
     public init(time: String = "Night", weather: String = "Clear", camera: String = "Orbit",
                 screensaver: Bool = false, screensaverSpeed: Double = 0, quality: String = "",
@@ -82,7 +85,35 @@ public struct TVSettings: Codable, Sendable, Equatable {
         self.lensDirt = lensDirt; self.vignette = vignette; self.filmGrain = filmGrain
         self.chromaticAberration = chromaticAberration; self.calibration = calibration
         self.renderScale = renderScale
+        self.dev = nil
     }
+}
+
+/// One control on the phone's dev dashboard, defined by the TV (so new look-dev switches need no
+/// phone update). kind: "choice" (options), "slider" (min/max/step) or "toggle" ("true"/"false").
+public struct DevControl: Codable, Sendable, Equatable, Identifiable {
+    public var key: String
+    public var label: String
+    public var group: String
+    public var kind: String
+    public var value: String
+    public var note: String
+    public var options: [String]
+    public var min: Double
+    public var max: Double
+    public var step: Double
+    public var id: String { key }
+    public init(key: String, label: String, group: String, kind: String, value: String, note: String = "",
+                options: [String] = [], min: Double = 0, max: Double = 1, step: Double = 0.05) {
+        self.key = key; self.label = label; self.group = group; self.kind = kind; self.value = value
+        self.note = note; self.options = options; self.min = min; self.max = max; self.step = step
+    }
+}
+
+public struct DevValue: Codable, Sendable, Equatable {
+    public var key: String
+    public var value: String
+    public init(key: String, value: String) { self.key = key; self.value = value }
 }
 
 public struct TVStatus: Codable, Sendable, Equatable {
@@ -104,6 +135,8 @@ public struct TVStatus: Codable, Sendable, Equatable {
     /// Frame caps the display allows: its refresh rate and half (50/25 at 50 Hz, 60/30 at 60 Hz).
     public var frameRates: [Int]
     public var refreshRate: Double
+    /// Dev dashboard controls with their current values (nil from older TV builds).
+    public var devControls: [DevControl]?
 
     public init(tvName: String, settings: TVSettings, times: [String], weathers: [String],
                 cameras: [String], qualityLevels: [String], ambientOcclusionModes: [String] = [], antiAliasingModes: [String] = [],

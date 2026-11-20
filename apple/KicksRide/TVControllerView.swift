@@ -68,6 +68,8 @@ struct TVControllerView: View {
                 Text("Low / High / Ultra: render scale, shadows (floodlight shadows from High), puddle mirror size, volumetric steps.")
             }
 
+            devSections(status.devControls ?? [])
+
             Section {
                 options("Ambient occlusion", status.ambientOcclusionModes, \.ambientOcclusion)
                 options("Anti-aliasing", status.antiAliasingModes, \.antiAliasing)
@@ -118,6 +120,59 @@ struct TVControllerView: View {
             }
         }
         .monospacedDigit()
+    }
+
+    // MARK: - Dev dashboard (controls defined by the TV)
+
+    /// One section per group, in the order the TV registered them.
+    @ViewBuilder private func devSections(_ controls: [DevControl]) -> some View {
+        let groups = controls.reduce(into: [String]()) { if !$0.contains($1.group) { $0.append($1.group) } }
+        ForEach(groups, id: \.self) { group in
+            let items = controls.filter { $0.group == group }
+            Section {
+                ForEach(items) { devControl($0) }
+            } header: { Text(group) } footer: {
+                let notes = items.map(\.note).filter { !$0.isEmpty }
+                if !notes.isEmpty { Text(notes.joined(separator: " ")) }
+            }
+        }
+    }
+
+    @ViewBuilder private func devControl(_ c: DevControl) -> some View {
+        switch c.kind {
+        case "choice":
+            Picker(c.label, selection: devBind(c.key, c.value)) {
+                ForEach(c.options, id: \.self) { Text($0).tag($0) }
+            }
+        case "toggle":
+            Toggle(c.label, isOn: Binding(
+                get: { devValue(c.key, c.value) == "true" },
+                set: { setDev(c.key, $0 ? "true" : "false") }))
+        default:
+            let v = Binding<Double>(
+                get: { Double(devValue(c.key, c.value)) ?? c.min },
+                set: { setDev(c.key, String(format: "%g", $0)) })
+            VStack(alignment: .leading) {
+                LabeledContent(c.label, value: String(format: c.step < 1 ? "%.2f" : "%.0f", v.wrappedValue))
+                Slider(value: v, in: c.min...max(c.max, c.min + 0.001), step: c.step > 0 ? c.step : 0.01)
+            }
+        }
+    }
+
+    private func devValue(_ key: String, _ fallback: String) -> String {
+        draft.dev?.first { $0.key == key }?.value ?? fallback
+    }
+
+    private func devBind(_ key: String, _ fallback: String) -> Binding<String> {
+        Binding(get: { devValue(key, fallback) }, set: { setDev(key, $0) })
+    }
+
+    private func setDev(_ key: String, _ value: String) {
+        guard devValue(key, "\u{0}") != value else { return }
+        var dev = draft.dev ?? []
+        if let i = dev.firstIndex(where: { $0.key == key }) { dev[i].value = value } else { dev.append(DevValue(key: key, value: value)) }
+        draft.dev = dev
+        push()
     }
 
     // MARK: - Controls
